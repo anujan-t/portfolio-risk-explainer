@@ -1,0 +1,17 @@
+# secrets
+.env
+.env.*
+*.key
+
+# real brokerage exports stay local
+data/private/
+*_real.csv
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# os
+.DS_Store
