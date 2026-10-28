@@ -1,0 +1,661 @@
+/* Night Ledger — ledger tables, bars and matrices. Figures are right-aligned and tabular. */
+
+.table-scroll {
+  /* A containing block, so visually hidden (absolutely positioned) text inside wide tables cannot widen the page. */
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.table-scroll:focus-visible {
+  outline-offset: -2px;
+}
+
+.ledger {
+  width: 100%;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.ledger th,
+.ledger td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--lx-line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.ledger thead th {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  border-bottom-color: var(--lx-line-strong);
+  color: var(--lx-ink-3);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.ledger tbody th {
+  color: var(--lx-ink);
+  font-weight: 400;
+}
+
+.ledger .num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ledger tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.ledger tfoot th,
+.ledger tfoot td {
+  border-top: 3px double var(--lx-line-strong);
+  border-bottom: 0;
+  color: var(--lx-ink);
+  font-weight: 600;
+}
+
+.ledger :is(th, td):first-child {
+  padding-left: 0;
+}
+
+.ledger :is(th, td):last-child {
+  padding-right: 0;
+}
+
+.panel--flush .ledger :is(th, td):first-child {
+  padding-left: 16px;
+}
+
+.panel--flush .ledger :is(th, td):last-child {
+  padding-right: 16px;
+}
+
+.ledger--compact th,
+.ledger--compact td {
+  padding: 6px 8px;
+}
+
+.ledger tr.is-clickable {
+  cursor: pointer;
+}
+
+.ledger tr.is-clickable:hover > * {
+  background: color-mix(in srgb, var(--lx-ink) 4%, var(--lx-panel));
+}
+
+/* ---- Sortable headers ------------------------------------------------------------------------------ */
+
+.sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  margin: -4px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.num > .sort {
+  flex-direction: row-reverse;
+}
+
+.sort:hover,
+.sort.is-active {
+  color: var(--lx-ink);
+}
+
+.sort__icon {
+  flex: none;
+  opacity: 0.45;
+}
+
+.sort:hover .sort__icon,
+.sort.is-active .sort__icon {
+  opacity: 1;
+}
+
+.sort:focus-visible {
+  outline-offset: 1px;
+}
+
+/* ---- Holdings ledger ------------------------------------------------------------------------------ */
+
+.ledger--holdings th,
+.ledger--holdings td {
+  padding-right: 9px;
+  padding-left: 9px;
+}
+
+.ledger--holdings tbody td,
+.ledger--holdings tbody th {
+  height: 40px;
+}
+
+.sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--lx-panel);
+}
+
+.ticker-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--lx-ink);
+  font-family: var(--lx-mono);
+  font-size: 12.5px;
+  text-decoration: underline;
+  text-decoration-color: var(--lx-line-strong);
+  text-underline-offset: 4px;
+}
+
+.ticker-button:hover {
+  text-decoration-color: var(--lx-ink-2);
+}
+
+.ticker-button__warn {
+  flex: none;
+  color: var(--lx-warn);
+}
+
+.col-name {
+  max-width: 220px;
+}
+
+.col-name .truncate {
+  max-width: 220px;
+}
+
+.ledger--holdings tbody .col-name {
+  color: var(--lx-ink-2);
+}
+
+@media (max-width: 1360px) {
+  .ledger--holdings th,
+  .ledger--holdings td {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .ledger--holdings .col-name,
+  .ledger--holdings .col-name .truncate {
+    max-width: 160px;
+  }
+}
+
+.weight-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.meter {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 40px;
+  height: 3px;
+  overflow: hidden;
+  background: var(--lx-line);
+}
+
+.meter__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--lx-brass);
+}
+
+/* ---- Editor ledger ------------------------------------------------------------------------------------ */
+
+.ledger--editor tbody th,
+.ledger--editor tbody td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.editor__security {
+  min-width: 180px;
+}
+
+.editor__ticker {
+  display: block;
+  color: var(--lx-ink);
+  font-size: 13px;
+}
+
+.editor__name {
+  display: block;
+  max-width: 300px;
+  overflow: hidden;
+  color: var(--lx-ink-2);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor__exchange {
+  color: var(--lx-ink-3);
+}
+
+.editor__security .field-message {
+  display: block;
+  max-width: 300px;
+  white-space: normal;
+}
+
+.editor__qty .input {
+  display: inline-block;
+  width: 112px;
+}
+
+.editor__remove {
+  width: 40px;
+  text-align: right;
+}
+
+.ledger--editor tr.is-invalid > * {
+  background: color-mix(in srgb, var(--lx-down) 5%, var(--lx-panel));
+}
+
+.editor__close-inline {
+  display: none;
+}
+
+/* The editor sits in narrow columns (Scenarios) as well as on phones, so it adapts to its own width. */
+.editor__scroll {
+  container: editor-table / inline-size;
+}
+
+@container editor-table (max-width: 600px) {
+  .ledger--editor .editor__close {
+    display: none;
+  }
+
+  .editor__close-inline {
+    display: block;
+    color: var(--lx-ink-3);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+
+  .editor__security {
+    min-width: 0;
+  }
+
+  .editor__name,
+  .editor__security .field-message {
+    max-width: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .editor__qty .input {
+    width: 96px;
+  }
+}
+
+/* ---- Composition bar --------------------------------------------------------------------------------- */
+
+.comp {
+  display: grid;
+  gap: 16px;
+}
+
+.comp__bar {
+  display: flex;
+  gap: 2px;
+  height: 28px;
+}
+
+.comp__seg {
+  min-width: 2px;
+  background: color-mix(in srgb, var(--lx-ink) var(--shade, 50%), var(--lx-panel));
+  transition: opacity 120ms ease;
+}
+
+.comp__bar:has(.is-active) .comp__seg:not(.is-active),
+.comp:has(.comp__entry.is-active) .comp__seg:not(.is-active) {
+  opacity: 0.35;
+}
+
+.comp__seg.is-active {
+  box-shadow: inset 0 -3px 0 var(--lx-brass);
+}
+
+.comp__legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  column-gap: 24px;
+}
+
+.comp__entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--lx-line);
+  font-size: 13px;
+}
+
+.comp__swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  background: color-mix(in srgb, var(--lx-ink) var(--shade, 50%), var(--lx-panel));
+}
+
+.comp__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--lx-ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comp__weight {
+  color: var(--lx-ink);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.comp__entry.is-active {
+  box-shadow: inset 0 -2px 0 var(--lx-brass);
+}
+
+.comp__entry.is-active .comp__label {
+  color: var(--lx-ink);
+}
+
+/* ---- Diverging bars ------------------------------------------------------------------------------------ */
+
+.dbars {
+  display: grid;
+}
+
+.dbars__row {
+  display: grid;
+  grid-template-columns: minmax(52px, 76px) minmax(48px, 1fr) minmax(88px, auto);
+  align-items: center;
+  gap: 12px;
+  min-height: 38px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--lx-line);
+}
+
+.dbars__row:last-child {
+  border-bottom: 0;
+}
+
+.dbars__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--lx-ink);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dbars__track {
+  position: relative;
+  height: 14px;
+}
+
+.dbars__axis {
+  position: absolute;
+  top: -8px;
+  bottom: -8px;
+  left: 50%;
+  width: 1px;
+  background: var(--lx-line-strong);
+}
+
+.dbars__bar {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+}
+
+.dbars--market .dbars__bar--pos {
+  background: var(--lx-up);
+}
+
+.dbars--market .dbars__bar--neg {
+  background: var(--lx-down);
+}
+
+.dbars--neutral .dbars__bar--pos {
+  background: var(--lx-ink-2);
+}
+
+.dbars--neutral .dbars__bar--neg {
+  border: 1px solid var(--lx-ink-2);
+  background: transparent;
+}
+
+.dbars__value {
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dbars__figure {
+  display: inline-grid;
+  justify-items: end;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.dbars__sub {
+  color: var(--lx-ink-3);
+  font-size: 11.5px;
+}
+
+/* ---- Correlation matrix ---------------------------------------------------------------------------------- */
+
+.corr-wrap {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.corr {
+  width: 100%;
+  max-width: calc(64px + var(--corr-n, 8) * 92px);
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: 12px;
+}
+
+.corr__corner {
+  min-width: 56px;
+}
+
+.corr__col {
+  padding: 2px 2px 6px;
+  color: var(--lx-ink-3);
+  font-family: var(--lx-mono);
+  font-size: 11px;
+  font-weight: 400;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.corr__row {
+  padding: 0 8px 0 0;
+  color: var(--lx-ink-2);
+  font-family: var(--lx-mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.corr__cell {
+  min-width: 46px;
+  height: 34px;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: var(--lx-panel);
+  color: var(--lx-ink);
+  font-variant-numeric: tabular-nums lining-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.corr__cell.is-diagonal {
+  box-shadow: inset 0 0 0 1px var(--lx-line);
+  color: var(--lx-ink-3);
+}
+
+.corr__cell.is-empty {
+  box-shadow: inset 0 0 0 1px var(--lx-line);
+  color: var(--lx-ink-3);
+}
+
+.corr__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--lx-ink-2);
+  font-size: 12px;
+}
+
+.corr__legend > li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.corr__key {
+  display: inline-block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.corr__key--pos {
+  background: color-mix(in srgb, var(--lx-brass) 45%, var(--lx-panel));
+}
+
+.corr__key--neg {
+  background: color-mix(in srgb, var(--lx-ink-2) 34%, var(--lx-panel));
+}
+
+.corr-pairs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 24px;
+  padding-top: 12px;
+  border-top: 1px solid var(--lx-line);
+}
+
+.corr-pairs__group {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.corr-pairs__title {
+  color: var(--lx-ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.corr-pairs__item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--lx-line);
+  font-size: 12.5px;
+}
+
+.corr-pairs__item:last-child {
+  border-bottom: 0;
+}
+
+.corr-pairs__value {
+  color: var(--lx-ink);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ---- Scenario weights ------------------------------------------------------------------------------------ */
+
+.weights {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.weights__bars-head {
+  min-width: 140px;
+}
+
+.weights__bars-head .legend-swatch {
+  margin: 0 4px 0 8px;
+}
+
+.weights__bars {
+  min-width: 140px;
+}
+
+.weights__bar {
+  display: block;
+  height: 4px;
+  max-width: 100%;
+}
+
+.weights__bar + .weights__bar {
+  margin-top: 3px;
+}
+
+.weights__bar--before {
+  background: var(--lx-ink-3);
+}
+
+.weights__bar--after {
+  background: var(--lx-brass);
+}
+
+.weights__tag {
+  margin-left: 6px;
+  color: var(--lx-ink-3);
+  font-size: 11.5px;
+}
+
+.ledger--weights tr.is-removed :is(th, td) {
+  color: var(--lx-ink-3);
+}
+
+/* On phones the figures carry the comparison; the paired bars need more width than a 390px screen allows. */
+@media (max-width: 600px) {
+  .ledger--weights :is(.weights__bars, .weights__bars-head) {
+    display: none;
+  }
+}

@@ -1,37 +1,36 @@
-# LENS / Portfolio Risk Explainer
+# LENS — Portfolio Risk Explainer
 
-Build a portfolio with ticker search and share quantities. Prices, adjusted
-history and supported currency conversions come directly from market-data
-endpoints; no CSV upload or brokerage credentials are required.
+A private, local portfolio-intelligence app. Build a portfolio by ticker search
+or from a screenshot of your brokerage holdings, then see its value, risk,
+concentration and historical behaviour in your own currency — alongside daily
+sector and holdings news. Holdings never leave your computer.
 
-**Stack:** Python, pandas, NumPy, FastAPI, React, TypeScript and Vite.
-
-The interface is a personal portfolio observatory: a proportional allocation
-atlas with a holding inspector, followed by focused Performance, Risk &
-relationships, Holdings and Field notes views. Portfolio construction and
-what-if studies remain separate from the applied analysis. It runs locally,
-with a private portfolio library, light/dark themes and responsive layouts.
-Map area represents allocation weight; tile position and colour do not imply
-risk, correlation or expected returns.
+**Stack:** Python, pandas, NumPy, FastAPI, RapidOCR (local), React, TypeScript, Vite.
 
 ## What it does
 
-- Searches equities and ETFs, resolves their most recent completed daily
-  prices, and supports fractional share quantities.
-- Reports in USD or CAD, including observed historical FX conversion for
-  securities quoted in the other supported currency.
-- Calculates weights, concentration, effective positions, sector-data coverage,
-  annualized volatility, beta, correlations and covariance-based risk contributions.
-- Shows hypothetical constant-current-weight history, drawdowns, and 95%
-  historical one-day VaR and expected shortfall.
-- Explains the actual computed metrics in plain English and compares hypothetical
-  allocations on the same market snapshot and observation dates.
-- Saves portfolios locally with revision checks to prevent overwriting edits
-  made in another browser window.
-
-The included example allocations are hypothetical, not the user's holdings.
-Their market data is real historical provider data. The old synthetic CSV files
-remain only as reproducible development fixtures and for the legacy CLI.
+- **Global holdings.** Stocks, ETFs and mutual funds from exchanges covered by
+  Yahoo Finance (for example NYSE, Nasdaq, TSX, LSE, XETRA, Euronext, Tokyo,
+  Hong Kong, NSE, ASX, Johannesburg, Tel Aviv). Up to 25 positions.
+- **Thirteen reporting currencies** (USD, CAD, EUR, GBP, JPY, AUD, CHF, HKD,
+  SGD, INR, CNY, SEK, NZD). Minor-unit quotes such as GBp, ZAc and ILA are
+  converted to whole currency units before FX conversion.
+- **Screenshot import.** Paste or drop a screenshot of your holdings. Text is
+  read on your computer by an offline OCR model; proposed tickers and share
+  quantities are checked against market data and shown for review. Nothing is
+  added until you confirm each row.
+- **Daily news.** Sector briefings for all 11 GICS sectors (US Select Sector
+  and iShares Global sector ETFs as proxies, with 1-day, 1-week, 1-month and
+  year-to-date moves) refresh automatically every few hours, plus news for the
+  securities you hold.
+- **Risk analysis.** Annualised volatility, beta, correlation, maximum
+  drawdown, historical 95% VaR and expected shortfall, covariance-based risk
+  contribution, correlation matrix and concentration (HHI, effective positions,
+  sector, currency and exchange exposure), with plain-English explanations.
+- **History** from six months to the full daily record of each listing, with
+  dividends and splits.
+- **What-if scenarios** compared on identical dates, and a private portfolio
+  library with revision checks.
 
 ## Run locally
 
@@ -47,64 +46,52 @@ Set-Location ..
 .\Start.ps1
 ```
 
-Open **http://127.0.0.1:8766/**. API reference is at `/docs`.
-`Start.ps1 -Python <python.exe> -Port <port>` can use an existing environment.
-The frontend build is generated locally and is not committed.
+Open **http://127.0.0.1:8766/**. API reference: `/docs`. See `RUNNING.txt` for
+options, methodology and limitations.
 
-For frontend development, run `npm run dev` in `frontend`; Vite proxies API
-requests to the Python service on port 8766.
+## Data, methods and limits
 
-## How the data and math work
+- **Market data and news** come from Yahoo Finance's public chart/search
+  endpoints. They are unofficial, can be delayed, change or be rate-limited, and
+  are not a licensed market feed. Failures are reported; nothing is filled in
+  with synthetic data.
+- **Valuation** uses each security's latest *completed* close and the latest
+  completed FX close — not real-time executable prices.
+- **FX** uses the provider's direct pair, the inverted reverse pair, or a cross
+  through USD; each pair's quote currency is verified before use, and the method
+  is shown for every currency.
+- **Returns** come from dividend- and split-adjusted closes. Historical prices
+  are converted with same-date FX and never forward-filled. When holdings trade
+  in time zones three or more hours apart, *Auto* frequency uses weekly returns
+  to limit distortions from non-synchronous closing prices.
+- The historical path applies **today's weights** to past returns; it is not
+  your account performance. Risk figures are historical estimates, not forecasts.
+- **News** is shown with publisher and timestamp and links to the original
+  story. There are no sentiment or "impact" scores.
+- **Explanations** are rule-based summaries of the computed metrics. No portfolio
+  data is sent to an AI service.
+- Funds are not looked through to their underlying holdings.
 
-Yahoo Finance public chart/search endpoints supply prices and security metadata.
-They are unofficial, may be delayed or unavailable, and are not a guaranteed
-commercial market feed. No API key is required. Only ticker/search/history
-requests leave the machine; share quantities and portfolio names are not sent
-to the provider.
+## Privacy
 
-The app supports long-only equities and ETFs quoted in USD or CAD. Other
-currencies, derivatives, short positions and cash-only portfolios are outside
-the model's current scope. ETF sector look-through is not implemented: fund
-exposure is shown separately instead of inventing underlying sector weights.
-
-Daily returns are computed from adjacent observed adjusted closes **before**
-complete-case alignment. Prices and FX rates are never forward-filled. Every
-holding and the benchmark must have usable history, with at least 60 aligned
-daily observations. An unpriced ticker fails explicitly; remaining holdings
-are not silently reweighted into a different portfolio.
-
-The historical index applies current weights to past returns as if rebalanced
-daily. It is **not actual account performance**, a trade backtest or a forecast.
-When incomplete intervals are excluded, that limitation is reported alongside
-the path. Beta, correlations, risk contributions and scenario comparisons use
-matching dates and a common reporting currency.
-
-## Explanations and privacy
-
-Explanations are **deterministic, metric-grounded summaries, not LLM output**.
-No external AI service receives the portfolio. LLM narration remains a future,
-opt-in capability, not an implemented feature claim.
-
-On Windows, saved portfolios and public market cache live under
-`%LOCALAPPDATA%\PortfolioRiskExplainer`, outside the source directory and its
-OneDrive sync. Override storage with `PORTFOLIO_DATA_DIR`. These are private
-local SQLite records protected by OS account permissions, not an encrypted
-brokerage vault. The app has no broker sync, trading or account-authentication
-features. Keep it bound to loopback; it is not designed for public hosting.
+Portfolios and cached public market data are stored in
+`%LOCALAPPDATA%\PortfolioRiskExplainer` (override with `PORTFOLIO_DATA_DIR`).
+Only ticker symbols, company names and date ranges are sent to the data
+provider — never share quantities, values or screenshots. Uploaded screenshots
+are processed in memory and discarded after the request. The server listens on
+`127.0.0.1` only and is not designed for public hosting.
 
 ## Development
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
+Set-Location frontend; npm run build
 ```
 
-The original command remains available:
+The original metrics command remains available for the CSV fixtures:
 
 ```powershell
 .\.venv\Scripts\python.exe risk.py data\sample_holdings.csv --prices data\sample_prices.csv
 ```
 
-See `RUNNING.txt` for methodology, limitations and operating details.
-
-Educational portfolio research only. Historical risk estimates are uncertain;
-they are not investment advice or guarantees about future gains or losses.
+Educational portfolio research only — not investment advice.
