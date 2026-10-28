@@ -1,0 +1,130 @@
+LENS / PORTFOLIO RISK EXPLAINER
+=============================
+
+Build with ticker search and share quantities. No CSV workflow.
+Research and education only; not investment advice or a trading system.
+
+QUICK START
+  Python 3.12+ and Node.js 22 LTS recommended.
+  python -m venv .venv
+  .\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
+  Set-Location frontend
+  npm ci
+  npm run build
+  Set-Location ..
+  .\Start.ps1
+
+  Open http://127.0.0.1:8766/
+  API reference: http://127.0.0.1:8766/docs
+  Stop with Ctrl+C in the server terminal.
+  Start.ps1 also accepts -Python <existing-python.exe> and -Port <port>.
+  Node is needed only to build/develop, not to serve built frontend assets.
+  npm run dev in frontend uses a separate Vite development port and proxies
+  API calls to the Python service on 8766.
+
+INPUTS AND COVERAGE
+  One to twenty distinct long-only equities/ETFs, positive fractional share
+  quantities, USD or CAD reporting. Securities must be quoted in USD or CAD.
+  Duplicate ticker rows are aggregated; inconsistent legacy prices rejected.
+  Shorts, margin, options, futures, crypto, raw index holdings, cash interest,
+  and unsupported currencies are not modeled.
+  Benchmark defaults to SPY. Choose a supported equity/ETF ticker, not an
+  unsupported raw index. History ranges: 6mo, 1y, 2y and 5y.
+  Examples are explicitly hypothetical allocations, not the user's holdings.
+
+MARKET SOURCE
+  Yahoo Finance public chart/search JSON endpoints, unofficial and potentially
+  delayed. No API key; no reliability or completeness guarantee. Provider
+  restrictions/timeouts are reported rather than bypassed or filled with
+  synthetic data. Ticker/search requests leave the computer, but portfolio
+  names, share quantities and market values are not sent to Yahoo.
+  Cache lifetime: six hours. Refresh bypasses the cache. Individual securities
+  retain fetched-at and last-completed-price dates. An interrupted refresh
+  does not overwrite a valid cached record with a failed response.
+
+  Latest valuation uses completed daily closes, not intraday/after-hours
+  prices or executable quotes. The current incomplete trading-day bar is
+  excluded. Historical returns use adjusted closes for dividends/splits.
+  No unadjusted-close fallback when required adjustment data is missing.
+  Sector descriptions come from symbol metadata. Unknown equity sectors
+  remain Unknown. ETFs use Funds (no look-through); the app does not claim
+  to know their underlying sectors, geographic exposure or overlaps.
+
+FX AND MISSING DATA
+  USD/CAD positions and the benchmark are converted to the reporting currency.
+  Valuation uses the latest completed FX close; its date is shown separately.
+  Historical prices multiply by observed same-date currency-pair closes.
+  Forex and equity daily close conventions differ; this is an approximation,
+  not an intraday synchronized valuation. No forward-filling FX observations.
+
+  Return calculation precedes alignment on the union observation calendar:
+    return[t] = adjusted_price[t] / adjusted_price[t-1] - 1
+  A missing current or previous observation creates a missing return, not a
+  zero return or a multi-day return passed off as a daily return.
+  All holdings and the benchmark share complete rows; minimum 60 observations.
+  Unpriced holdings cause a clear error. They are not dropped and the other
+  holdings are not renormalized into a different portfolio.
+  Historical indexes compound only included returns; if missing intervals
+  were excluded, the app explicitly says so. Such a path is not continuous
+  realized portfolio performance.
+
+MATH
+  Current weight = shares * latest_price_in_base / total_portfolio_value.
+  HHI = sum(weight^2); effective positions = 1/HHI. This is concentration,
+  not a correlation-adjusted count or ETF underlying-security count.
+  Portfolio return = sum(current_weight * historical_asset_return), assuming
+  the current weights were rebalanced every day. No historical transactions
+  or cost basis are inferred. Fees, taxes, deposits and withdrawals excluded.
+  Annual volatility = sample daily standard deviation * sqrt(252).
+  Beta = sample cov(portfolio, benchmark) / sample var(benchmark).
+  Beta/correlation is undefined for a constant benchmark and displayed null.
+  Risk contribution share = w_i*(covariance_matrix*w)_i/(w'Cov*w).
+  Contributions sum to one for positive portfolio variance. Negative
+  contributions can arise from covariance/hedging and are not clipped.
+  Correlation uses the same aligned observation set; constant series produce
+  undefined/null correlations, not invented zeros.
+
+  Index starts at 100; drawdown = index / running_peak - 1.
+  Max drawdown is the most negative drawdown, including the initial 100 peak.
+  Historical return is the compounded hypothetical included-observation path,
+  not the user's return or a prediction.
+  95% one-day VaR = max(0, -fifth_percentile(daily_returns)).
+  95% historical ES = max(0, -mean(returns <= fifth_percentile)).
+  Amounts multiply these fractions by current entered portfolio value.
+  These estimates do not cap losses; extreme unobserved regimes can be worse.
+
+WHAT-IF COMPARISONS
+  A scenario is an unsaved copy, not a trade or rebalance order.
+  Baseline and scenario use the same base currency, provider snapshot,
+  benchmark and common complete dates across all securities in either study.
+  Consequently a baseline recomputed for comparison may differ from its
+  standalone result if the new asset restricts common history.
+
+EXPLANATIONS
+  The explanation cards use measured metrics and transparent deterministic
+  templates. They are NOT LLM-generated and do not provide buy/sell advice.
+  LLM narration remains future opt-in work. No portfolio goes to an AI API.
+
+PERSISTENCE AND PRIVACY
+  Default Windows directory: %LOCALAPPDATA%\PortfolioRiskExplainer
+  Database: portfolios.sqlite3, outside OneDrive source folders.
+  Other platforms: ~/.local/share/PortfolioRiskExplainer
+  Override with PORTFOLIO_DATA_DIR if desired.
+  SQLite holdings are not encrypted; protected by the user's OS permissions.
+  Portfolio names/quantities save only on explicit Save. Analyze alone does
+  not persist the user's holdings. Public market records are cached separately.
+  Updates/deletes require the latest revision number; stale edits return409.
+  No auth/multiuserhosting/brokersync/transactions. Server binds127.0.0.1.
+
+VALIDATION
+  .\.venv\Scripts\python.exe -m unittest discover -s tests -v
+  Frontend: npm run build in frontend.
+  Test fixtures are synthetic and never used as production-data fallbacks.
+  Legacy CSV entrypoints and original valid sample outputs are preserved.
+
+STATUS
+  Implemented: portfolio builder, direct market data, USD/CAD conversions,
+  persistence, advanced metrics, correlations, historical charts, scenarios,
+  deterministic explanation layer and responsive dashboard.
+  Not implemented: brokerage sync, remote account login, multiuserhosting,
+  paid/licensed data feeds, fund look-through, automatic trades, external LLM.
