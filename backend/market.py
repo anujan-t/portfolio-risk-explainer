@@ -1,6 +1,7 @@
 """Market data client: global listings, adjusted daily history, FX and corporate events."""
 
 from datetime import datetime, timezone
+import logging
 import math
 import re
 import time
@@ -12,7 +13,11 @@ import requests
 
 from .sectors import normalize_sector
 
+log = logging.getLogger(__name__)
+
 SOURCE = "Yahoo Finance public chart/search endpoints (unofficial)"
+# Shown when the provider cannot be reached at all; the underlying error is logged, never shown.
+UNREACHABLE = "LENS could not reach Yahoo Finance. Check the internet connection and try again."
 SYMBOL = re.compile(r"[A-Z0-9][A-Z0-9.=&-]{0,24}")
 ISO_CURRENCY = re.compile(r"[A-Z]{3}")
 RANGES = ("6mo", "1y", "2y", "5y", "10y", "max")
@@ -42,7 +47,9 @@ def currency_unit(code):
         return MINOR_UNITS[code]
     if isinstance(code, str) and ISO_CURRENCY.fullmatch(code):
         return code, 1.0
-    raise UnsupportedAsset(f"Unsupported quote currency {code!r}; prices are never assumed to be in another unit.")
+    if not code:
+        raise UnsupportedAsset("Yahoo Finance did not report a quote currency for this security, so it cannot be valued.")
+    raise UnsupportedAsset(f"Yahoo Finance quotes this security in “{code}”, a unit LENS does not support, so it cannot be valued.")
 
 
 def finite_positive(value):
@@ -68,20 +75,27 @@ class Market:
                 response.raise_for_status()
                 data = response.json()
                 if not isinstance(data, dict):
-                    raise MarketUnavailable("The market provider returned a non-object JSON response.")
+                    raise MarketUnavailable("Yahoo Finance returned data in an unexpected format. Try again later.")
                 return data
             except requests.exceptions.HTTPError as exc:
                 if exc.response is not None and exc.response.status_code == 404:
-                    raise UnsupportedAsset("Ticker or requested history was not found by the market provider.") from exc
-                raise MarketUnavailable("Yahoo Finance rejected the request or is rate-limiting access. Try again later; no prices were substituted.") from exc
-            except (requests.exceptions.RequestException, ValueError) as exc:
-                raise MarketUnavailable("The market-data service is unavailable or returned invalid JSON. Saved portfolios are unchanged.") from exc
-        raise MarketUnavailable("Yahoo Finance is rate-limiting requests. Try again shortly; no prices were substituted.")
+                    raise UnsupportedAsset("Yahoo Finance has no data for this ticker or history range.") from exc
+                log.warning("Yahoo Finance request for %s failed: %s", path, exc)
+                raise MarketUnavailable("Yahoo Finance refused the request or is rate-limiting access. "
+                                        "Try again in a few minutes; no prices were substituted.") from exc
+            except ValueError as exc:
+                log.warning("Yahoo Finance returned an unreadable response for %s: %s", path, exc)
+                raise MarketUnavailable("Yahoo Finance returned data that could not be read. Try again later.") from exc
+            except OSError as exc:
+                # Connection, timeout and TLS failures (including a missing CA bundle) can carry local paths, so they are logged only.
+                log.warning("Could not reach Yahoo Finance for %s: %r", path, exc)
+                raise MarketUnavailable(UNREACHABLE) from exc
+        raise MarketUnavailable("Yahoo Finance is rate-limiting requests. Try again in a few minutes; no prices were substituted.")
 
     def search(self, query, refresh=False):
         query = query.strip()
         if not query or len(query) > 80:
-            raise ValueError("Search must contain 1 to 80 characters.")
+            raise ValueError("Enter 1 to 80 characters to search.")
         key = "v2:search:" + query.casefold()
         with self.lock:
             cached = self.store.cache_get(key)
@@ -89,11 +103,11 @@ class Market:
                 return cached["results"]
             data = self.request("/v1/finance/search", {"q": query, "quotesCount": 15, "newsCount": 0})
             if not isinstance(data.get("quotes"), list):
-                raise MarketUnavailable("Market search returned an unexpected format.")
+                raise MarketUnavailable("Yahoo Finance search returned data in an unexpected format.")
             results, seen = [], set()
             for item in data["quotes"]:
                 if not isinstance(item, dict):
-                    raise MarketUnavailable("The market search response contains malformed entries.")
+                    raise MarketUnavailable("Yahoo Finance search returned data in an unexpected format.")
                 symbol = str(item.get("symbol", "")).upper()
                 if item.get("quoteType") not in HOLDING_TYPES or not SYMBOL.fullmatch(symbol) or symbol in seen:
                     continue
@@ -110,7 +124,7 @@ class Market:
     def chart(self, ticker, history_range="1y", refresh=False):
         ticker = clean_symbol(ticker)
         if history_range not in RANGES:
-            raise ValueError("Choose a supported history window.")
+            raise ValueError("Choose a supported history range.")
         # Versioned keys: cached records from earlier schemas are never reused.
         key = f"v3:chart:{ticker}:{history_range}"
         with self.lock:
@@ -130,7 +144,7 @@ class Market:
         try:
             envelope = data["chart"]
             if envelope.get("error"):
-                raise UnsupportedAsset(str(envelope["error"].get("description", "History unavailable.")))
+                raise UnsupportedAsset(str(envelope["error"].get("description") or "Yahoo Finance has no price history for this ticker."))
             result = envelope["result"][0]
             meta = result["meta"]
             timestamps = result.get("timestamp") or []
@@ -142,33 +156,33 @@ class Market:
             zone = ZoneInfo(meta["exchangeTimezoneName"])
             regular = meta["currentTradingPeriod"]["regular"]
         except (KeyError, IndexError, TypeError, ZoneInfoNotFoundError) as exc:
-            raise MarketUnavailable(f"{ticker} has incomplete adjusted-price metadata. No unadjusted fallback was used.") from exc
+            raise MarketUnavailable(f"Yahoo Finance returned incomplete adjusted-price data for {ticker}. No unadjusted fallback was used.") from exc
         if meta.get("dataGranularity") != "1d":
-            raise MarketUnavailable(f"{ticker}: the provider returned {meta.get('dataGranularity')} bars instead of daily data.")
+            raise MarketUnavailable(f"Yahoo Finance returned {meta.get('dataGranularity')} bars for {ticker} instead of daily data.")
         if not len(timestamps) == len(closes) == len(adjusted):
-            raise MarketUnavailable(f"Price history lengths do not agree for {ticker}.")
+            raise MarketUnavailable(f"Yahoo Finance returned price series of different lengths for {ticker}.")
         if instrument not in (*HOLDING_TYPES, "CURRENCY"):
-            raise UnsupportedAsset(f"{ticker} is a {instrument}; this app supports stocks, ETFs and mutual funds, not derivatives or indices.")
+            raise UnsupportedAsset(f"Yahoo Finance classifies {ticker} as {str(instrument).lower()}. LENS supports stocks, ETFs and mutual funds only.")
         # Yahoo serves USDXXX=X under the alias XXX=X; accept only that verified form.
         alias = ticker.startswith("USD") and ticker.endswith("=X") and returned == ticker[3:] and instrument == "CURRENCY" and currency == ticker[3:6]
         if returned != ticker and not alias:
-            raise MarketUnavailable(f"Provider returned {returned or 'an unnamed symbol'} instead of {ticker}.")
+            raise MarketUnavailable(f"Yahoo Finance returned {returned or 'an unnamed symbol'} instead of {ticker}.")
         iso, scale = currency_unit(currency)
         now = datetime.now(timezone.utc)
         incomplete_day = datetime.fromtimestamp(regular["start"], zone).date() if now.timestamp() < regular["end"] else None
         records, seen = [], {}
         for stamp, close, adj in zip(timestamps, closes, adjusted):
             if not isinstance(stamp, (int, float)) or not math.isfinite(stamp):
-                raise MarketUnavailable(f"{ticker} has an invalid price timestamp.")
+                raise MarketUnavailable(f"Yahoo Finance returned an invalid price date for {ticker}.")
             try:
                 day = datetime.fromtimestamp(stamp, zone).date()
             except (ValueError, OverflowError, OSError) as exc:
-                raise MarketUnavailable(f"{ticker} has an out-of-range price timestamp.") from exc
+                raise MarketUnavailable(f"Yahoo Finance returned an out-of-range price date for {ticker}.") from exc
             if day == incomplete_day or day > now.astimezone(zone).date():
                 continue
             for value in (close, adj):
                 if value is not None and not finite_positive(value):
-                    raise MarketUnavailable(f"{ticker} contains invalid observed prices.")
+                    raise MarketUnavailable(f"Yahoo Finance returned invalid prices for {ticker}.")
             row = {"date": day.isoformat(), "close": close, "adjusted_close": adj}
             if day in seen:
                 # Some exchanges (e.g. ASX) add a post-close bar for the latest session; keep the later bar.
@@ -176,7 +190,7 @@ class Market:
                 if earlier["close"] != close or earlier["adjusted_close"] != adj:
                     latest = max(datetime.fromtimestamp(t, zone).date() for t in timestamps if isinstance(t, (int, float)))
                     if day != latest:
-                        raise MarketUnavailable(f"Conflicting duplicate daily observations were returned for {ticker} on {day}.")
+                        raise MarketUnavailable(f"Conflicting duplicate daily prices were returned for {ticker} on {day}.")
                 records[seen[day]] = row
                 continue
             seen[day] = len(records)
@@ -192,13 +206,13 @@ class Market:
             records[-1] = {"date": tail["date"], "close": price, "adjusted_close": price}
         valid = [row for row in records if finite_positive(row["close"]) and finite_positive(row["adjusted_close"])]
         if not valid:
-            raise UnsupportedAsset(f"No completed adjusted-price history is available for {ticker}.")
+            raise UnsupportedAsset(f"Yahoo Finance has no completed adjusted-price history for {ticker}.")
         last = valid[-1]
         warnings = []
         if records[-1]["date"] != last["date"]:
             warnings.append(f"{ticker}: latest price observation is missing; valuation uses {last['date']}.")
         if (now.date() - datetime.fromisoformat(last["date"]).date()).days > 5:
-            warnings.append(f"{ticker}: the most recent completed close is more than five calendar days old.")
+            warnings.append(f"{ticker}: the latest completed close is more than five calendar days old.")
         events = result.get("events") or {}
         dividends, splits = [], []
         for item in (events.get("dividends") or {}).values():
@@ -220,14 +234,15 @@ class Market:
     def asset(self, ticker, history_range="1y", refresh=False):
         chart = self.chart(ticker, history_range, refresh)
         if chart["instrument"] not in HOLDING_TYPES:
-            raise UnsupportedAsset("Currency pairs may be used for conversion, not as portfolio holdings.")
+            raise UnsupportedAsset("Currency pairs are used only for conversion and cannot be held in a portfolio.")
         warning, sector = None, None
         if chart["instrument"] == "EQUITY":
             try:
                 match = next((item for item in self.search(chart["ticker"], refresh) if item["ticker"] == chart["ticker"]), None)
                 sector = match["sector"] if match else None
             except (MarketUnavailable, UnsupportedAsset, ValueError) as exc:
-                warning = f"{chart['ticker']}: sector lookup is unavailable ({exc}); exposure is shown as Unknown."
+                log.warning("Sector lookup for %s failed: %s", chart["ticker"], exc)
+                warning = f"{chart['ticker']}: the sector could not be looked up, so its exposure is shown as Unknown."
         return {**chart, "sector": sector, "warnings": [*chart["warnings"], *([warning] if warning else [])]}
 
     def pair(self, source, target, history_range, refresh):
@@ -256,11 +271,11 @@ class Market:
                 quote_pair = {**quote_pair, "series": {day: 1 / rate for day, rate in quote_pair["series"].items()}, "rate": 1 / quote_pair["rate"]}
             return {"currency": source, "base": target, "method": method, "pairs": [quote_pair["pair"]], **quote_pair}
         if "USD" in (source, target):
-            raise UnsupportedAsset(f"No exchange-rate history is available for {source}/{target}.")
+            raise UnsupportedAsset(f"Yahoo Finance has no exchange-rate history for {source}/{target}.")
         first, second = self.fx(source, "USD", history_range, refresh), self.fx("USD", target, history_range, refresh)
         series = {day: rate * second["series"][day] for day, rate in first["series"].items() if day in second["series"]}
         if not series:
-            raise UnsupportedAsset(f"No overlapping exchange-rate history is available for {source}/{target}.")
+            raise UnsupportedAsset(f"The {source}/{target} exchange-rate histories do not overlap.")
         return {
             "currency": source, "base": target, "method": "triangulated", "pairs": [*first["pairs"], *second["pairs"]],
             "series": series, "rate": first["rate"] * second["rate"], "date": min(first["date"], second["date"]),

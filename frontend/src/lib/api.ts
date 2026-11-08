@@ -51,7 +51,7 @@ export function isAbort(error: unknown): boolean {
 
 export function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
-  return 'Something went wrong. Please try again.';
+  return 'The action could not be completed. Try again.';
 }
 
 function humanLocation(loc: unknown[]): string {
@@ -69,10 +69,10 @@ function statusFallback(status: number): string {
     case 413: return 'The file is too large for the service to accept (413).';
     case 422: return 'The request contained values the service could not accept (422).';
     case 429: return 'Too many requests. Wait a moment and try again (429).';
-    case 502: return 'The market-data provider could not be reached (502).';
+    case 502: return 'Yahoo Finance could not be reached. Try again in a few minutes (502).';
     case 503: return 'The service is temporarily unavailable (503).';
     case 504: return 'The service took too long to respond (504).';
-    default: return status >= 500 ? `The LENS service hit an internal error (${status}).` : `The request failed (${status}).`;
+    default: return status >= 500 ? `The LENS service could not complete the request (${status}). The details are in the LENS server log.` : `The request failed (${status}).`;
   }
 }
 
@@ -88,7 +88,7 @@ export function describeDetail(detail: unknown, status: number): string {
       }
       return String(item);
     });
-    return parts.join(' · ');
+    return parts.join('; ');
   }
   if (detail && typeof detail === 'object' && 'message' in detail && typeof (detail as { message: unknown }).message === 'string') {
     return (detail as { message: string }).message;
@@ -130,7 +130,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     text = await response.text();
   } catch (error) {
     if (isAbort(error) || options.signal?.aborted) throw abortError();
-    throw new ApiError('The response from the LENS service was interrupted. Please try again.', response.status);
+    throw new ApiError('The response from the LENS service was interrupted. Try again.', response.status);
   }
   if (options.signal?.aborted) throw abortError();
   let data: unknown = null;
@@ -175,8 +175,8 @@ export const api = {
   refreshNews: () => request<NewsRefreshResult>('/news/refresh', { method: 'POST' }),
   newsStatus: (signal?: AbortSignal) => request<NewsStatus>('/news/status', { signal }),
   /**
-   * The image bytes are the whole request body, labelled with the image's own type (PNG, JPEG, WebP,
-   * BMP or GIF; callers normalise the type first). No form wrapper and no file name are sent.
+   * The image bytes are the whole request body, labeled with the image's own type (PNG, JPEG, WebP,
+   * BMP or GIF; callers normalize the type first). No form wrapper and no file name are sent.
    */
   importScreenshot: (image: Blob, signal?: AbortSignal) =>
     request<ScreenshotImport>('/import/screenshot', { method: 'POST', raw: { body: image, type: image.type }, signal }),

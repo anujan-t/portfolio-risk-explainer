@@ -1,5 +1,5 @@
-import { useId, useMemo, useState, type ReactNode } from 'react';
-import { ArrowRight, Check, Pencil, RefreshCw } from 'lucide-react';
+import { useId, useMemo, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 import type { Analysis, AnalysisRequest, Frequency, HistoryRange, PortfolioInput } from '../types';
 import { useLens, type Applied, type Controls } from '../state/store';
 import { hrefFor, navigate } from '../lib/hooks';
@@ -18,11 +18,12 @@ import {
   plural,
   rangeLabel,
   rangeWords,
+  sentence,
   signedNum,
 } from '../lib/format';
 import { normalizeTicker, sameHoldings, validTicker, weeklyAllowed } from '../lib/portfolio';
 import { AnalysisStatus, NoAnalysis, PageHeader } from '../components/page';
-import { Badge, Delta, ExampleBadge, FieldMessage, KeyValue, Notice, Panel, ScrollRegion, Segmented, cx } from '../components/ui';
+import { Badge, Delta, FieldMessage, FigureTable, KeyValue, Notice, Panel, ScrollRegion, Segmented, cx, type FigureRow } from '../components/ui';
 import { PerformanceChart } from '../components/charts/PerformanceChart';
 import { DrawdownChart } from '../components/charts/DrawdownChart';
 import { DivergingBars } from '../components/Bars';
@@ -31,36 +32,31 @@ import { CorrelationMatrix } from '../components/CorrelationMatrix';
 const OTHER = '__other__';
 
 export function RiskPage() {
-  const { applied } = useLens();
+  const { applied, draft } = useLens();
   const analysis = applied?.analysis ?? null;
+  const name = analysis?.portfolio.name ?? draft.portfolio.name;
   return (
     <div className="page risk">
-      <PageHeader title="Risk" meta={applied ? <AppliedLine applied={applied} /> : 'No analysis applied yet'}>
-        {applied?.hypothetical && <ExampleBadge />}
-      </PageHeader>
+      <PageHeader
+        title="Risk"
+        dateline={[
+          name,
+          ...(applied
+            ? [
+                <>
+                  Against <span className="mono">{applied.analysis.benchmark.ticker}</span>
+                </>,
+                `${rangeWords(applied.request.range)} of ${applied.analysis.coverage.frequency} returns`,
+                dateRange(applied.analysis.coverage.start_date, applied.analysis.coverage.end_date),
+              ]
+            : ['No analysis applied yet']),
+        ]}
+        example={applied?.hypothetical}
+      />
       <RiskControls />
       <AnalysisStatus />
       {applied && analysis ? <RiskResults applied={applied} /> : <NoAnalysis what="Risk results" />}
     </div>
-  );
-}
-
-function AppliedLine({ applied }: { applied: Applied }) {
-  const { analysis, request } = applied;
-  return (
-    <>
-      <span>{analysis.portfolio.name}</span>
-      <span className="page-head__sep" aria-hidden="true" />
-      <span>
-        vs <span className="mono">{analysis.benchmark.ticker}</span> {analysis.benchmark.name}
-      </span>
-      <span className="page-head__sep" aria-hidden="true" />
-      <span>
-        {rangeWords(request.range)}, {analysis.coverage.frequency} returns
-      </span>
-      <span className="page-head__sep" aria-hidden="true" />
-      <span>{dateRange(analysis.coverage.start_date, analysis.coverage.end_date)}</span>
-    </>
   );
 }
 
@@ -86,16 +82,16 @@ function describeChanges(request: AnalysisRequest, draft: PortfolioInput, contro
   const changes: string[] = [];
   const holdings = describeHoldingChanges(request.portfolio, draft);
   if (holdings) changes.push(holdings);
-  if (request.portfolio.base_currency !== draft.base_currency) changes.push(`base currency ${request.portfolio.base_currency} → ${draft.base_currency}`);
+  if (request.portfolio.base_currency !== draft.base_currency) changes.push(`base currency (${request.portfolio.base_currency} to ${draft.base_currency})`);
   if (request.portfolio.name.trim() !== draft.name.trim()) changes.push('portfolio name');
-  if (request.benchmark !== controls.benchmark) changes.push(`benchmark ${request.benchmark} → ${controls.benchmark || 'none'}`);
-  if (request.range !== controls.range) changes.push(`range ${rangeLabel(request.range)} → ${rangeLabel(controls.range)}`);
-  if (request.frequency !== controls.frequency) changes.push(`frequency ${frequencyLabel(request.frequency)} → ${frequencyLabel(controls.frequency)}`);
+  if (request.benchmark !== controls.benchmark) changes.push(`benchmark (${request.benchmark} to ${controls.benchmark || 'none'})`);
+  if (request.range !== controls.range) changes.push(`range (${rangeLabel(request.range)} to ${rangeLabel(controls.range)})`);
+  if (request.frequency !== controls.frequency) changes.push(`frequency (${frequencyLabel(request.frequency)} to ${frequencyLabel(controls.frequency)})`);
   return changes;
 }
 
 const FREQUENCY_HELP: Record<Frequency, string> = {
-  auto: 'Auto uses weekly returns when holdings trade in different time zones, otherwise daily.',
+  auto: 'Auto uses weekly returns when markets close 3 or more hours apart and the range is 1 year or longer; otherwise daily.',
   daily: 'Daily returns give more observations but can understate co-movement between markets that close at different times.',
   weekly: 'Weekly returns line up markets that close at different times; they need a range of 1 year or longer.',
 };
@@ -127,13 +123,12 @@ function RiskControls() {
   return (
     <section className="controls" aria-label="Analysis settings">
       <div className="controls__draft">
-        <span className="controls__draft-label">Draft</span>
+        <span className="controls__draft-label">Draft:</span>
         <span className="controls__draft-name">{draft.portfolio.name || 'Untitled portfolio'}</span>
         <span className="faint">
-          {plural(draft.portfolio.holdings.length, 'holding')} · {draft.portfolio.base_currency}
+          {plural(draft.portfolio.holdings.length, 'holding')}, base currency {draft.portfolio.base_currency}
         </span>
         <a className="button button--quiet button--small controls__edit" href={hrefFor('import', 'manual')}>
-          <Pencil size={13} aria-hidden="true" />
           Edit holdings
         </a>
       </div>
@@ -163,7 +158,7 @@ function RiskControls() {
                   .filter(benchmark => benchmark.region === region)
                   .map(benchmark => (
                     <option key={benchmark.ticker} value={benchmark.ticker}>
-                      {benchmark.ticker} · {benchmark.name}
+                      {benchmark.ticker}: {benchmark.name}
                     </option>
                   ))}
               </optgroup>
@@ -227,10 +222,7 @@ function RiskControls() {
         </div>
         <div className="controls__actions">
           {upToDate && (
-            <span className="controls__state">
-              <Check size={14} aria-hidden="true" />
-              Results match these settings
-            </span>
+            <span className="controls__state">Results match these settings.</span>
           )}
           <button type="button" className="button button--primary" onClick={onApply} disabled={(Boolean(pending) && pendingMatches) || upToDate}>
             {pending && pendingMatches ? 'Applying…' : 'Apply'}
@@ -248,22 +240,19 @@ function RiskControls() {
         </div>
       </div>
       <p className="controls__help" id={`${ids}-frequency-help`}>
-        {appliedFrequency ? <>Applied: {appliedFrequency}</> : FREQUENCY_HELP[controls.frequency]}
+        {appliedFrequency ? sentence(appliedFrequency) : FREQUENCY_HELP[controls.frequency]}
         {!weeklyAllowed(controls.range) && ' Weekly is unavailable for 6M because it would leave too few observations.'}
       </p>
       {applied && changes.length > 0 && !(pending && pendingMatches) && (
         <p className="unapplied" role="status">
-          <span className="unapplied__mark" aria-hidden="true" />
-          <span>
-            <strong>Unapplied changes</strong> — {changes.join('; ')}. The results below still describe the applied analysis.
-          </span>
+          <strong>Changes not yet applied:</strong> {changes.join('; ')}. The results below describe the last applied analysis.
         </p>
       )}
       {!applied && !pending && <p className="controls__help">Choose settings, then Apply to analyze the draft.</p>}
       {importNotice && (
         <Notice
           tone="success"
-          title={`Draft updated from a screenshot: ${plural(importNotice.count, 'holding')} (${importNotice.mode === 'replace' ? 'replaced the draft' : 'added to the draft'})`}
+          title={`${plural(importNotice.count, 'holding')} from the screenshot ${importNotice.mode === 'replace' ? 'replaced the draft' : importNotice.count === 1 ? 'was added to the draft' : 'were added to the draft'}`}
           onDismiss={dismissImportNotice}
           actions={
             <>
@@ -272,12 +261,11 @@ function RiskControls() {
               </button>
               <button type="button" className="button" onClick={() => navigate('import', 'manual')}>
                 Review holdings
-                <ArrowRight size={14} aria-hidden="true" />
               </button>
             </>
           }
         >
-          Nothing has been analyzed or saved yet. Review the holdings if you like, then apply the analysis.
+          Nothing has been analyzed or saved yet. Review the holdings, then apply the analysis.
         </Notice>
       )}
       {problems.length > 0 && (
@@ -307,24 +295,41 @@ function troughDate(series: Analysis['series']): string | null {
   return date;
 }
 
-function Metric({ label, value, sub, title }: { label: ReactNode; value: ReactNode; sub?: ReactNode; title?: string }) {
-  return (
-    <div className="metric" title={title}>
-      <dt className="metric__label">{label}</dt>
-      <dd className="metric__value">{value}</dd>
-      {sub && <dd className="metric__sub">{sub}</dd>}
-    </div>
-  );
-}
-
 function RiskResults({ applied }: { applied: Applied }) {
-  const windowId = useId();
   const analysis = applied.analysis;
   const { risk, coverage, benchmark } = analysis;
   const base = analysis.portfolio.base_currency;
   const horizon = horizonLabel(coverage.horizon);
   const unit = coverage.horizon === 'week' ? 'week' : 'day';
   const trough = troughDate(analysis.series);
+  const ticker = <span className="mono">{benchmark.ticker}</span>;
+
+  const returnRows: FigureRow[] = [
+    { label: 'Return over the period', value: <Delta value={risk.historical_return} digits={1} />, detail: 'Total return, dividends reinvested' },
+    { label: <>{ticker} return over the period</>, value: <Delta value={risk.benchmark_return} digits={1} />, detail: benchmark.name },
+    { label: 'Annual volatility', value: percent(risk.annual_volatility, 1), detail: <>{ticker} {percent(risk.benchmark_volatility, 1)}</> },
+    { label: `${unit === 'day' ? 'Daily' : 'Weekly'} volatility`, value: percent(risk.period_volatility, 2) },
+    { label: <>Beta to {ticker}</>, value: num(risk.beta, 2), detail: isNum(risk.beta) ? 'Sensitivity to benchmark moves' : 'Not enough overlapping data' },
+    { label: <>Correlation with {ticker}</>, value: signedNum(risk.benchmark_correlation, 2) },
+  ];
+  const lossRows: FigureRow[] = [
+    { label: 'Maximum drawdown', value: percent(risk.max_drawdown, 1), detail: trough ? `Trough on ${fmtDate(trough)}` : 'No decline from a peak' },
+    {
+      label: `Value at risk, 95%, ${horizon}`,
+      value: percent(risk.historical_var_95, 1),
+      detail: `${amount(risk.var_amount, base)} ${base}`,
+      title: `Historical value at risk: on 5% of ${unit}s in this period the portfolio lost more than this.`,
+    },
+    {
+      label: `Expected shortfall, 95%, ${horizon}`,
+      value: percent(risk.historical_es_95, 1),
+      detail: `${amount(risk.es_amount, base)} ${base}`,
+      title: `Expected shortfall: the average loss on the worst 5% of ${unit}s in this period.`,
+    },
+    { label: `Best ${unit}`, value: <Delta value={risk.best_period} digits={2} /> },
+    { label: `Worst ${unit}`, value: <Delta value={risk.worst_period} digits={2} /> },
+    { label: 'Observations', value: `${num(coverage.observations, 0)} ${unit}s` },
+  ];
 
   return (
     <>
@@ -337,42 +342,24 @@ function RiskResults({ applied }: { applied: Applied }) {
           </ul>
         </Notice>
       )}
-      <dl className="metric-strip" aria-label="Risk metrics for the applied analysis">
-        <Metric label="Annual volatility" value={percent(risk.annual_volatility, 1)} sub={<>Benchmark {percent(risk.benchmark_volatility, 1)}</>} />
-        <Metric
-          label={
-            <>
-              Beta vs <span className="mono">{benchmark.ticker}</span>
-            </>
-          }
-          value={num(risk.beta, 2)}
-          sub={isNum(risk.beta) ? 'Sensitivity to benchmark moves' : 'Not enough overlapping data'}
-        />
-        <Metric label="Correlation" value={signedNum(risk.benchmark_correlation, 2)} sub={<>with <span className="mono">{benchmark.ticker}</span></>} />
-        <Metric label="Max drawdown" value={percent(risk.max_drawdown, 1)} sub={trough ? `Trough ${fmtDate(trough)}` : 'No decline from a peak'} />
-        <Metric
-          label={`VaR 95 · ${horizon}`}
-          value={percent(risk.historical_var_95, 1)}
-          sub={`${amount(risk.var_amount, base)} ${base}`}
-          title={`Historical value at risk: in 5% of ${unit}s in this window, the portfolio lost more than this.`}
-        />
-        <Metric
-          label={`ES 95 · ${horizon}`}
-          value={percent(risk.historical_es_95, 1)}
-          sub={`${amount(risk.es_amount, base)} ${base}`}
-          title={`Expected shortfall: the average loss on the worst 5% of ${unit}s in this window.`}
-        />
-      </dl>
+      <Panel
+        className="key-figures"
+        title="Key figures"
+        meta={`Values in ${base}. ${sentence(`${frequencyLabel(coverage.frequency)} returns, ${dateRange(coverage.start_date, coverage.end_date)}`)}`}
+        source="Yahoo Finance daily closes, dividends and exchange rates; LENS calculations."
+      >
+        <div className="key-figures__tables">
+          <FigureTable rows={returnRows} caption="Return, volatility and benchmark sensitivity" />
+          <FigureTable rows={lossRows} caption="Drawdown and loss measures" />
+        </div>
+      </Panel>
 
       <div className="grid grid--dense risk-grid">
         <Panel
           className="col-12"
           title="Performance"
-          meta={
-            <>
-              Index = 100 at the window start · in {base} · {coverage.frequency} closes
-            </>
-          }
+          meta={`Portfolio and ${benchmark.ticker} value indexed to 100 at the start of the period, in ${base}, from ${coverage.frequency} closes`}
+          source="Yahoo Finance daily closes and dividends, converted at same-date exchange rates; LENS calculations."
         >
           <PerformanceChart
             key={applied.id}
@@ -381,44 +368,43 @@ function RiskResults({ applied }: { applied: Applied }) {
             benchmarkTicker={benchmark.ticker}
             benchmarkName={benchmark.name}
           />
-          <section className="window-facts" aria-labelledby={windowId}>
-            <h3 className="section-title" id={windowId}>
-              Applied window <span className="faint">· {dateRange(coverage.start_date, coverage.end_date)}</span>
-            </h3>
-            <KeyValue
-              className="facts--strip"
-              items={[
-                { label: 'Portfolio return', value: <Delta value={risk.historical_return} digits={1} /> },
-                { label: <>{benchmark.ticker} return</>, value: <Delta value={risk.benchmark_return} digits={1} /> },
-                { label: `Best ${unit}`, value: <Delta value={risk.best_period} digits={2} /> },
-                { label: `Worst ${unit}`, value: <Delta value={risk.worst_period} digits={2} /> },
-                { label: `${unit === 'day' ? 'Daily' : 'Weekly'} volatility`, value: percent(risk.period_volatility, 2) },
-                { label: 'Observations', value: `${num(coverage.observations, 0)} ${unit}s` },
-              ]}
-            />
-          </section>
         </Panel>
-        <Panel className="col-8 col-wide-md" title="Drawdown" meta="Decline from the previous peak of the portfolio index">
+        <Panel
+          className="col-8 col-wide-md"
+          title="Drawdown"
+          meta="Decline of the portfolio index from its previous peak"
+          source="LENS calculations from Yahoo Finance daily closes and exchange rates."
+        >
           <DrawdownChart key={applied.id} series={analysis.series} fill />
         </Panel>
-        <Panel className="col-4" title="Risk contribution" meta="Share of portfolio variance by holding">
+        <Panel className="col-4" title="Risk contribution" meta="Share of portfolio variance by holding" source="LENS calculations from the covariance of holding returns.">
           <RiskContribution analysis={analysis} />
         </Panel>
-        <Panel className="col-6 col-wide-md" title="Correlation" meta={`Pairwise correlation of ${coverage.frequency} returns`}>
+        <Panel
+          className="col-6 col-wide-md"
+          title="Correlation"
+          meta={`Pairwise correlation of ${coverage.frequency} returns`}
+          source="LENS calculations from Yahoo Finance daily closes."
+        >
           <CorrelationMatrix correlations={analysis.correlations} frequency={coverage.frequency} />
         </Panel>
-        <Panel className="col-6 col-wide-md" title="Risk notes" actions={<Badge tone="brass">Rule-based, not AI</Badge>}>
+        <Panel
+          className="col-6 col-wide-md"
+          title="Risk notes"
+          meta="Plain-language notes on the figures above"
+          source={sentence(analysis.explanation_method || 'Fixed LENS rules applied to the figures in this analysis')}
+        >
           {analysis.explanations.length ? (
             <ol className="notes" role="list">
               {analysis.explanations.map((note, index) => (
                 <li key={`${note.metric}-${index}`} className={cx('notes__item', note.severity === 'warning' && 'notes__item--warning')}>
                   <span className="notes__number" aria-hidden="true">
-                    {String(index + 1).padStart(2, '0')}
+                    {index + 1}.
                   </span>
                   <div className="notes__body">
                     <p className="notes__title">
                       {note.title}
-                      {note.severity === 'warning' && <Badge tone="warn">Watch</Badge>}
+                      {note.severity === 'warning' && <Badge tone="warn">Caution</Badge>}
                     </p>
                     <p className="notes__text">{note.text}</p>
                   </div>
@@ -428,7 +414,6 @@ function RiskResults({ applied }: { applied: Applied }) {
           ) : (
             <p className="faint">No notes were generated for this analysis.</p>
           )}
-          {analysis.explanation_method && <p className="panel__foot faint">{analysis.explanation_method}</p>}
         </Panel>
         <AssumptionsPanel applied={applied} />
       </div>
@@ -455,21 +440,16 @@ function RiskContribution({ analysis }: { analysis: Analysis }) {
           display: (
             <span className="dbars__figure">
               {percent(holding.risk_contribution, 1)}
-              <span className="dbars__sub">wt {percent(holding.weight, 1)}</span>
+              <span className="dbars__sub">weight {percent(holding.weight, 1)}</span>
             </span>
           ),
         }))}
       />
       <p className="panel__foot faint">
-        Bars right of the axis added to portfolio variance.{' '}
-        {offsets.length > 0 ? (
-          <>
-            Bars left of it are a <strong className="muted">historical offset</strong>: {offsets.map(holding => holding.ticker).join(', ')} moved against the rest in this window, which may not
-            persist.
-          </>
-        ) : (
-          'No holding acted as a historical offset in this window.'
-        )}
+        Bars to the right of the axis added to portfolio variance.{' '}
+        {offsets.length > 0
+          ? `Bars to the left reduced it: ${offsets.map(holding => holding.ticker).join(', ')} moved against the rest of the portfolio over this period. The offset may not persist.`
+          : 'No holding reduced portfolio variance over this period.'}
       </p>
     </>
   );
@@ -480,7 +460,12 @@ function AssumptionsPanel({ applied }: { applied: Applied }) {
   const { coverage } = analysis;
   const base = analysis.portfolio.base_currency;
   return (
-    <Panel className="col-12" title="Assumptions and data" meta={`${analysis.source} · market data fetched ${fmtTimestamp(analysis.market_fetched_at)}`}>
+    <Panel
+      className="col-12"
+      title="Assumptions and data"
+      meta={`Market data fetched ${fmtTimestamp(analysis.market_fetched_at)}`}
+      source="Yahoo Finance (unofficial public chart and search endpoints); LENS calculations."
+    >
       <div className="data-layout">
         <section className="data-layout__fx" aria-labelledby="fx-heading">
           <h3 className="section-title" id="fx-heading">
@@ -511,8 +496,8 @@ function AssumptionsPanel({ applied }: { applied: Applied }) {
                         {fxRate(fx.rate)}
                       </td>
                       <td className="nowrap">{fmtDate(fx.date)}</td>
-                      <td>{fx.method === 'direct' ? 'Direct' : fx.method === 'inverse' ? 'Inverse' : 'Triangulated'}</td>
-                      <td className="mono">{fx.pairs.join(' · ') || DASH}</td>
+                      <td>{fx.method === 'direct' ? 'Direct quote' : fx.method === 'inverse' ? 'Inverted quote' : 'Cross rate'}</td>
+                      <td className="mono">{fx.pairs.join(', ') || DASH}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -533,11 +518,11 @@ function AssumptionsPanel({ applied }: { applied: Applied }) {
           <KeyValue
             className="facts--compact"
             items={[
-              { label: 'Window', value: `${fmtDate(coverage.start_date)} – ${fmtDate(coverage.end_date)}` },
+              { label: 'Period', value: dateRange(coverage.start_date, coverage.end_date) },
               { label: 'Requested range', value: rangeWords(request.range) },
               {
                 label: 'Frequency',
-                value: `${frequencyLabel(coverage.requested_frequency)} → ${coverage.frequency} (${horizonLabel(coverage.horizon)} horizon)`,
+                value: `${frequencyLabel(coverage.frequency)} (requested: ${frequencyLabel(coverage.requested_frequency)}); ${horizonLabel(coverage.horizon)} horizon`,
               },
               { label: 'Observations', value: `${num(coverage.observations, 0)} used of ${num(coverage.candidate_observations, 0)} (minimum ${num(coverage.min_observations, 0)})` },
               { label: 'Dropped', value: `${num(coverage.dropped_observations, 0)} incomplete ${coverage.frequency === 'weekly' ? 'weeks' : 'days'}` },
@@ -563,7 +548,7 @@ function AssumptionsPanel({ applied }: { applied: Applied }) {
           )}
           {analysis.warnings.length > 0 && (
             <p className="faint data-layout__note">
-              {plural(analysis.warnings.length, 'data warning')} for this analysis {analysis.warnings.length === 1 ? 'is' : 'are'} listed above the risk metrics.
+              {plural(analysis.warnings.length, 'data warning')} for this analysis {analysis.warnings.length === 1 ? 'is' : 'are'} listed above the key figures.
             </p>
           )}
         </section>

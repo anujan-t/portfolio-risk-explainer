@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Trash2, X } from 'lucide-react';
 import type { Asset, HoldingInput, SearchResult } from '../types';
 import { useLens } from '../state/store';
 import { api, errorMessage, isAbort } from '../lib/api';
-import { fmtDate, quantity, quotePrice } from '../lib/format';
+import { DASH, fmtDate, quantity, quotePrice } from '../lib/format';
 import { mergeHoldings, parseQuantity, quantityProblem, quantityText } from '../lib/portfolio';
 import { TickerSearch } from './TickerSearch';
 import { FieldMessage, Notice, ScrollRegion, Spinner, cx } from './ui';
@@ -238,7 +238,7 @@ export function HoldingsEditor({
                 <p className="pick__facts">
                   {[pick.asset.exchange, pick.asset.currency, pick.asset.instrument === 'ETF' ? 'ETF' : pick.asset.instrument === 'MUTUALFUND' ? 'Fund' : 'Equity', pick.asset.sector]
                     .filter(Boolean)
-                    .join(' · ')}
+                    .join(', ')}
                   <br />
                   Last close {quotePrice(pick.asset.price, pick.asset.currency, pick.asset.currency_scale)} on {fmtDate(pick.asset.price_date)}
                 </p>
@@ -263,8 +263,7 @@ export function HoldingsEditor({
                     />
                   </label>
                   <button type="submit" className="button button--primary">
-                    <Plus size={14} aria-hidden="true" />
-                    {holdings.some(holding => holding.ticker === pick.asset?.ticker) ? 'Add to existing' : 'Add holding'}
+                    {holdings.some(holding => holding.ticker === pick.asset?.ticker) ? 'Add to existing holding' : 'Add holding'}
                   </button>
                 </div>
                 {quantityError && <FieldMessage id={`${id}-qty-error`}>{quantityError}</FieldMessage>}
@@ -307,11 +306,11 @@ export function HoldingsEditor({
                   <tr key={holding.ticker} className={cx(error && 'is-invalid')}>
                     <th scope="row" className="editor__security">
                       <span className="mono editor__ticker">{holding.ticker}</span>
-                      <span className="editor__name" title={asset ? `${asset.name} · ${asset.exchange}` : undefined}>
+                      <span className="editor__name" title={asset ? `${asset.name}, ${asset.exchange}` : undefined}>
                         {asset ? (
                           <>
                             {asset.name}
-                            <span className="editor__exchange"> · {asset.exchange}</span>
+                            <span className="editor__exchange">, {asset.exchange}</span>
                           </>
                         ) : failure ? (
                           `Not found: ${failure}`
@@ -328,7 +327,7 @@ export function HoldingsEditor({
                         </FieldMessage>
                       )}
                     </th>
-                    <td className="num editor__close">{asset ? quotePrice(asset.price, asset.currency, asset.currency_scale) : '—'}</td>
+                    <td className="num editor__close">{asset ? quotePrice(asset.price, asset.currency, asset.currency_scale) : DASH}</td>
                     <td className="num editor__qty">
                       <QuantityInput
                         value={holding.shares}

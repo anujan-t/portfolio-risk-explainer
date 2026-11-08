@@ -111,15 +111,3 @@ export function boardHasMoves(board: SectorBoard | null): boolean {
 export function boardHasContent(board: SectorBoard | null): boolean {
   return boardHasMoves(board) || (board?.sectors ?? []).some(sector => sector.headlines.length > 0);
 }
-
-const SHORT_SECTOR: Record<string, string> = {
-  'Communication Services': 'Communication',
-  'Consumer Discretionary': 'Discretionary',
-  'Consumer Staples': 'Staples',
-  'Information Technology': 'Technology',
-  'Health Care': 'Health care',
-  'Real Estate': 'Real estate',
-};
-
-/** Compact sector label for dense rows; the full name stays available to assistive technology. */
-export const shortSector = (name: string) => SHORT_SECTOR[name] ?? name;

@@ -626,7 +626,7 @@ class HeaderlessTests(ScreenshotTestBase):
         self.assertEqual(result["rows"], [])
         self.assertIn(screenshot.WARN_NO_TEXT, result["warnings"])
         self.assertIn(screenshot.WARN_NO_ROWS, result["warnings"])
-        self.assertTrue(screenshot.WARN_NO_ROWS.startswith("No holdings were recognised"))
+        self.assertTrue(screenshot.WARN_NO_ROWS.startswith("No holdings were recognized"))
 
     def test_malformed_ocr_output_is_skipped(self) -> None:
         entries = [(None, "AAPL", 0.9), ([[0, 0], [10, 0]], "", 0.9), ([[0, 0], [10, 0], [10, 10]], "X", float("nan")),

@@ -10,7 +10,7 @@ export interface DivergingDatum {
   title?: string;
 }
 
-/** Horizontal bars around a centre axis. Market tone colours gains/losses (values always carry ▲/▼ text); neutral tone does not. */
+/** Horizontal bars around a center axis. Market tone colors gains and losses (values always carry a sign); neutral tone does not. */
 export function DivergingBars({ data, tone = 'market', label }: { data: DivergingDatum[]; tone?: 'market' | 'neutral'; label: string }) {
   const max = Math.max(0, ...data.map(item => (isNum(item.value) ? Math.abs(item.value) : 0))) || 1;
   return (
@@ -35,7 +35,7 @@ export function DivergingBars({ data, tone = 'market', label }: { data: Divergin
   );
 }
 
-/** Ink tint for the n-th of `count` segments: a continuous ramp from light (largest) to dark (smallest), never repeating. */
+/** Accent tint for the n-th of `count` segments: a continuous ramp from dark (largest) to light (smallest), never repeating. */
 function shadeFor(index: number, count: number): string {
   if (count <= 1) return '78%';
   return `${Math.round(84 - (index / (count - 1)) * 62)}%`;
@@ -48,7 +48,7 @@ export interface CompositionItem {
   weight: number;
 }
 
-/** One stacked bar of weights with a legend. Neutral ink tints; the hovered or focused entry is outlined in brass. */
+/** One stacked bar of weights with a legend, in tints of the accent color; the hovered entry is underlined. */
 export function CompositionBar({ items, label }: { items: CompositionItem[]; label: string }) {
   const [active, setActive] = useState<string | null>(null);
   const shown = items.filter(item => isNum(item.weight) && item.weight > 0);
@@ -86,7 +86,7 @@ export function CompositionBar({ items, label }: { items: CompositionItem[]; lab
   );
 }
 
-/** Thin brass weight meter used inside ledger cells. */
+/** Thin accent weight meter used inside table cells. */
 export function WeightMeter({ weight, max = 1 }: { weight: number; max?: number }) {
   const width = isNum(weight) && max > 0 ? Math.max(0, Math.min(100, (weight / max) * 100)) : 0;
   return (

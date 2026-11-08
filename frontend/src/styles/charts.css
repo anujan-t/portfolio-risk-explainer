@@ -1,4 +1,4 @@
-/* Night Ledger — charts: fine 1.5px lines, brass portfolio, dashed ink benchmark, mono value labels. */
+/* Charts: 1.5px lines, light horizontal gridlines, sans axis labels, direct labels. Series: navy, ochre, slate, forest, oxblood. */
 
 .perf,
 .drawdown,
@@ -52,17 +52,18 @@
 }
 
 .chart__grid line.is-base {
-  stroke: var(--lx-line-strong);
+  stroke: var(--lx-ink-3);
 }
 
 .chart__ticks line {
-  stroke: var(--lx-line-strong);
+  stroke: var(--lx-ink-3);
   shape-rendering: crispEdges;
 }
 
 .chart__axis text {
   fill: var(--lx-ink-3);
-  font-family: var(--lx-mono);
+  font-family: var(--lx-text);
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .chart__line {
@@ -72,28 +73,35 @@
   stroke-linejoin: round;
 }
 
-.chart__line--portfolio {
-  stroke: var(--lx-brass);
+.chart__line--portfolio,
+.chart__line--asset {
+  stroke: var(--lx-accent);
 }
 
 .chart__line--benchmark {
-  stroke: var(--lx-ink-3);
-  stroke-dasharray: 4 3;
-  stroke-linecap: butt;
+  stroke: var(--lx-series-2);
 }
 
-.chart__line--asset {
-  stroke: var(--lx-ink);
+.chart__line--drawdown {
+  stroke: var(--lx-down);
 }
 
-.chart__fill-stop--top {
-  stop-color: var(--lx-brass);
-  stop-opacity: 0.16;
+.chart__area--drawdown {
+  fill: var(--lx-down);
+  fill-opacity: 0.08;
 }
 
-.chart__fill-stop--bottom {
-  stop-color: var(--lx-brass);
-  stop-opacity: 0;
+.chart__label {
+  font-family: var(--lx-text);
+  font-weight: 600;
+}
+
+.chart__label--portfolio {
+  fill: var(--lx-accent);
+}
+
+.chart__label--benchmark {
+  fill: var(--lx-warn);
 }
 
 .chart__cursor line {
@@ -103,20 +111,21 @@
 }
 
 .chart__dot {
-  stroke: var(--lx-panel);
+  stroke: var(--lx-canvas);
   stroke-width: 1.5;
 }
 
-.chart__dot--portfolio {
-  fill: var(--lx-brass);
+.chart__dot--portfolio,
+.chart__dot--asset {
+  fill: var(--lx-accent);
 }
 
 .chart__dot--benchmark {
-  fill: var(--lx-ink-2);
+  fill: var(--lx-series-2);
 }
 
-.chart__dot--asset {
-  fill: var(--lx-ink);
+.chart__dot--drawdown {
+  fill: var(--lx-down);
 }
 
 .chart__hit {
@@ -131,13 +140,14 @@
 
 .chart__marker circle {
   fill: var(--lx-down);
-  stroke: var(--lx-panel);
+  stroke: var(--lx-canvas);
   stroke-width: 1.5;
 }
 
 .chart__marker text {
   fill: var(--lx-down);
-  font-family: var(--lx-mono);
+  font-family: var(--lx-text);
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .chart__split line {
@@ -147,7 +157,7 @@
 
 .chart__split text {
   fill: var(--lx-warn);
-  font-family: var(--lx-mono);
+  font-family: var(--lx-text);
 }
 
 .chart__dividends line {
@@ -161,9 +171,9 @@
 }
 
 .chart__end {
-  fill: var(--lx-brass);
-  stroke: var(--lx-panel);
-  stroke-width: 1.5;
+  fill: var(--lx-accent);
+  stroke: var(--lx-canvas);
+  stroke-width: 1;
 }
 
 /* ---- Readouts and legends -------------------------------------------------------------------- */
@@ -180,8 +190,7 @@
 .chart-readout__date {
   min-width: 96px;
   color: var(--lx-ink-2);
-  font-family: var(--lx-mono);
-  font-size: 12px;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .chart-readout__item {
@@ -197,8 +206,8 @@
 
 .chart-readout__value {
   color: var(--lx-ink);
-  font-family: var(--lx-mono);
-  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .legend-swatch {
@@ -208,20 +217,21 @@
   flex: none;
   width: 16px;
   height: 0;
-  border-top: 1.5px solid var(--lx-ink-2);
+  border-top: 2px solid var(--lx-ink-2);
   vertical-align: middle;
 }
 
-.legend-swatch--portfolio {
-  border-top-color: var(--lx-brass);
+.legend-swatch--portfolio,
+.legend-swatch--asset {
+  border-top-color: var(--lx-accent);
 }
 
 .legend-swatch--benchmark {
-  border-top: 1.5px dashed var(--lx-ink-3);
+  border-top-color: var(--lx-series-2);
 }
 
-.legend-swatch--asset {
-  border-top-color: var(--lx-ink);
+.legend-swatch--drawdown {
+  border-top-color: var(--lx-down);
 }
 
 .legend-swatch--before,
@@ -236,7 +246,7 @@
 }
 
 .legend-swatch--after {
-  border-top-color: var(--lx-brass);
+  border-top-color: var(--lx-accent);
 }
 
 /* ---- Sparkline --------------------------------------------------------------------------------- */
@@ -257,9 +267,9 @@
   place-items: center;
   min-height: 240px;
   padding: 16px;
-  border: 1px dashed var(--lx-line-strong);
-  border-radius: 4px;
-  color: var(--lx-ink-3);
+  border-top: 1px solid var(--lx-line);
+  border-bottom: 1px solid var(--lx-line);
+  color: var(--lx-ink-2);
   text-align: center;
 }
 
@@ -285,7 +295,7 @@
   left: 8px;
   height: 4px;
   margin-top: -2px;
-  border-radius: 2px;
+  border-radius: 0;
   background: var(--lx-line);
 }
 
@@ -293,7 +303,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  border-radius: 2px;
+  border-radius: 0;
   background: var(--lx-ink-3);
 }
 
@@ -318,12 +328,12 @@
 }
 
 .window-slider__input::-webkit-slider-thumb {
-  width: 16px;
-  height: 16px;
-  margin-top: 8px;
-  border: 2px solid var(--lx-brass);
-  border-radius: 50%;
-  background: var(--lx-panel);
+  width: 10px;
+  height: 18px;
+  margin-top: 7px;
+  border: 2px solid var(--lx-accent);
+  border-radius: 1px;
+  background: var(--lx-canvas);
   cursor: ew-resize;
   appearance: none;
   pointer-events: auto;
@@ -336,24 +346,24 @@
 
 .window-slider__input::-moz-range-thumb {
   box-sizing: border-box;
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--lx-brass);
-  border-radius: 50%;
-  background: var(--lx-panel);
+  width: 10px;
+  height: 18px;
+  border: 2px solid var(--lx-accent);
+  border-radius: 1px;
+  background: var(--lx-canvas);
   cursor: ew-resize;
   pointer-events: auto;
 }
 
 .window-slider__input:focus-visible::-webkit-slider-thumb {
   box-shadow:
-    0 0 0 2px var(--lx-panel),
+    0 0 0 2px var(--lx-canvas),
     0 0 0 4px var(--lx-focus);
 }
 
 .window-slider__input:focus-visible::-moz-range-thumb {
   box-shadow:
-    0 0 0 2px var(--lx-panel),
+    0 0 0 2px var(--lx-canvas),
     0 0 0 4px var(--lx-focus);
 }
 
@@ -363,7 +373,7 @@
   align-items: center;
   gap: 4px 16px;
   color: var(--lx-ink-2);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .window__summary .button {

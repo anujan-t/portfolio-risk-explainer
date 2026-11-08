@@ -97,7 +97,7 @@ export interface Concentration {
   largest_position: string;
   largest_weight: number;
   top_3_weight: number;
-  sector_exposures: { sector: string; weight: number }[]; // includes "Funds (no look-through)" and "Unknown"
+  sector_exposures: { sector: string; weight: number }[]; // includes "Funds (not looked through)" and "Unknown"
   currency_exposures: { currency: string; weight: number }[]; // ISO currencies
   exchange_exposures: Exposure[];
   unknown_sector_weight: number;
@@ -218,7 +218,7 @@ export interface SectorMove {
 
 export interface SectorBrief {
   id: string; // e.g. "information_technology"
-  name: string; // e.g. "Information Technology" — same names as holding sectors
+  name: string; // e.g. "Information Technology"; same names as holding sectors
   us: SectorMove | null; // US Select Sector SPDR proxy
   global: SectorMove | null; // iShares Global sector proxy
   headlines: NewsItem[]; // newest first
@@ -268,7 +268,7 @@ export interface ScreenshotRow {
   detected_symbol: string | null;
   detected_name: string | null;
   candidates: ScreenshotCandidate[]; // ranked; empty when unresolved
-  selected_ticker: string | null; // suggestion only — the user confirms
+  selected_ticker: string | null; // suggestion only; the user confirms
   quantity: number | null;
   quantity_source: 'column' | 'value_check' | 'derived_from_value' | 'single_number' | 'none';
   screenshot_price: number | null;

@@ -1,4 +1,4 @@
-/* Night Ledger — ledger tables, bars and matrices. Figures are right-aligned and tabular. */
+/* Report tables, bars and matrices. Figures are right-aligned and tabular. */
 
 .table-scroll {
   /* A containing block, so visually hidden (absolutely positioned) text inside wide tables cannot widen the page. */
@@ -15,13 +15,13 @@
 
 .ledger {
   width: 100%;
-  font-size: 13px;
+  font-size: 13.5px;
   line-height: 1.4;
 }
 
 .ledger th,
 .ledger td {
-  padding: 8px 10px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--lx-line);
   text-align: left;
   vertical-align: middle;
@@ -30,10 +30,12 @@
 .ledger thead th {
   padding-top: 6px;
   padding-bottom: 6px;
-  border-bottom-color: var(--lx-line-strong);
-  color: var(--lx-ink-3);
+  border-bottom: 1px solid var(--lx-line-strong);
+  color: var(--lx-ink-2);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   white-space: nowrap;
   vertical-align: bottom;
 }
@@ -44,17 +46,14 @@
 }
 
 .ledger .num {
+  font-variant-numeric: tabular-nums lining-nums;
   text-align: right;
   white-space: nowrap;
 }
 
-.ledger tbody tr:last-child > * {
-  border-bottom: 0;
-}
-
 .ledger tfoot th,
 .ledger tfoot td {
-  border-top: 3px double var(--lx-line-strong);
+  border-top: 1px solid var(--lx-line-strong);
   border-bottom: 0;
   color: var(--lx-ink);
   font-weight: 600;
@@ -68,14 +67,6 @@
   padding-right: 0;
 }
 
-.panel--flush .ledger :is(th, td):first-child {
-  padding-left: 16px;
-}
-
-.panel--flush .ledger :is(th, td):last-child {
-  padding-right: 16px;
-}
-
 .ledger--compact th,
 .ledger--compact td {
   padding: 6px 8px;
@@ -86,7 +77,7 @@
 }
 
 .ledger tr.is-clickable:hover > * {
-  background: color-mix(in srgb, var(--lx-ink) 4%, var(--lx-panel));
+  background: color-mix(in srgb, var(--lx-accent) 6%, var(--lx-canvas));
 }
 
 /* ---- Sortable headers ------------------------------------------------------------------------------ */
@@ -99,10 +90,12 @@
   margin: -4px 0;
   padding: 0;
   border: 0;
-  border-radius: 3px;
+  border-radius: 2px;
   background: none;
   color: inherit;
   font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
   white-space: nowrap;
 }
 
@@ -146,7 +139,7 @@
   position: sticky;
   left: 0;
   z-index: 1;
-  background: var(--lx-panel);
+  background: var(--lx-canvas);
 }
 
 .ticker-button {
@@ -156,23 +149,26 @@
   min-height: 28px;
   padding: 0;
   border: 0;
-  border-radius: 3px;
+  border-radius: 2px;
   background: none;
-  color: var(--lx-ink);
+  color: var(--lx-accent);
   font-family: var(--lx-mono);
-  font-size: 12.5px;
+  font-size: 13px;
+  font-weight: 500;
   text-decoration: underline;
-  text-decoration-color: var(--lx-line-strong);
+  text-decoration-color: var(--lx-control-line);
   text-underline-offset: 4px;
 }
 
 .ticker-button:hover {
-  text-decoration-color: var(--lx-ink-2);
+  color: var(--lx-ink);
+  text-decoration-color: currentColor;
 }
 
 .ticker-button__warn {
   flex: none;
   color: var(--lx-warn);
+  font-weight: 600;
 }
 
 .col-name {
@@ -222,7 +218,7 @@
   top: 0;
   bottom: 0;
   left: 0;
-  background: var(--lx-brass);
+  background: var(--lx-accent);
 }
 
 /* ---- Editor ledger ------------------------------------------------------------------------------------ */
@@ -241,6 +237,7 @@
   display: block;
   color: var(--lx-ink);
   font-size: 13px;
+  font-weight: 500;
 }
 
 .editor__name {
@@ -274,7 +271,7 @@
 }
 
 .ledger--editor tr.is-invalid > * {
-  background: color-mix(in srgb, var(--lx-down) 5%, var(--lx-panel));
+  background: color-mix(in srgb, var(--lx-down) 6%, var(--lx-canvas));
 }
 
 .editor__close-inline {
@@ -323,14 +320,13 @@
 
 .comp__bar {
   display: flex;
-  gap: 2px;
-  height: 28px;
+  gap: 1px;
+  height: 18px;
 }
 
 .comp__seg {
   min-width: 2px;
-  background: color-mix(in srgb, var(--lx-ink) var(--shade, 50%), var(--lx-panel));
-  transition: opacity 120ms ease;
+  background: color-mix(in srgb, var(--lx-accent) var(--shade, 50%), var(--lx-canvas));
 }
 
 .comp__bar:has(.is-active) .comp__seg:not(.is-active),
@@ -339,7 +335,7 @@
 }
 
 .comp__seg.is-active {
-  box-shadow: inset 0 -3px 0 var(--lx-brass);
+  box-shadow: inset 0 -3px 0 var(--lx-ink);
 }
 
 .comp__legend {
@@ -355,14 +351,14 @@
   min-width: 0;
   padding: 6px 0;
   border-bottom: 1px solid var(--lx-line);
-  font-size: 13px;
+  font-size: 13.5px;
 }
 
 .comp__swatch {
   flex: none;
   width: 10px;
   height: 10px;
-  background: color-mix(in srgb, var(--lx-ink) var(--shade, 50%), var(--lx-panel));
+  background: color-mix(in srgb, var(--lx-accent) var(--shade, 50%), var(--lx-canvas));
 }
 
 .comp__label {
@@ -380,7 +376,7 @@
 }
 
 .comp__entry.is-active {
-  box-shadow: inset 0 -2px 0 var(--lx-brass);
+  box-shadow: inset 0 -2px 0 var(--lx-ink);
 }
 
 .comp__entry.is-active .comp__label {
@@ -411,7 +407,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--lx-ink);
-  font-size: 13px;
+  font-size: 13.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -454,7 +450,7 @@
 }
 
 .dbars__value {
-  font-size: 13px;
+  font-size: 13.5px;
   text-align: right;
   white-space: nowrap;
 }
@@ -468,35 +464,33 @@
 
 .dbars__sub {
   color: var(--lx-ink-3);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
-/* ---- Correlation matrix ---------------------------------------------------------------------------------- */
+/* ---- Correlation matrix: square cells on a diverging oxblood-paper-navy scale ------------------------- */
 
 .corr-wrap {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
 .corr {
-  width: 100%;
-  max-width: calc(64px + var(--corr-n, 8) * 92px);
   border-collapse: separate;
   border-spacing: 2px;
   font-size: 12px;
 }
 
 .corr__corner {
-  min-width: 56px;
+  min-width: 52px;
 }
 
 .corr__col {
-  padding: 2px 2px 6px;
-  color: var(--lx-ink-3);
+  padding: 2px 0 6px;
+  color: var(--lx-ink-2);
   font-family: var(--lx-mono);
-  font-size: 11px;
-  font-weight: 400;
+  font-size: 11.5px;
+  font-weight: 500;
   text-align: center;
   white-space: nowrap;
 }
@@ -506,28 +500,29 @@
   color: var(--lx-ink-2);
   font-family: var(--lx-mono);
   font-size: 11.5px;
-  font-weight: 400;
+  font-weight: 500;
   text-align: right;
   white-space: nowrap;
 }
 
 .corr__cell {
-  min-width: 46px;
-  height: 34px;
-  padding: 0 4px;
-  border-radius: 2px;
-  background: var(--lx-panel);
+  width: 50px;
+  min-width: 50px;
+  height: 50px;
+  padding: 0;
+  border-radius: 0;
+  background: var(--lx-canvas);
   color: var(--lx-ink);
   font-variant-numeric: tabular-nums lining-nums;
   text-align: center;
   white-space: nowrap;
 }
 
-.corr__cell.is-diagonal {
-  box-shadow: inset 0 0 0 1px var(--lx-line);
-  color: var(--lx-ink-3);
+.corr__cell.is-strong {
+  color: var(--lx-accent-ink);
 }
 
+.corr__cell.is-diagonal,
 .corr__cell.is-empty {
   box-shadow: inset 0 0 0 1px var(--lx-line);
   color: var(--lx-ink-3);
@@ -537,40 +532,40 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 16px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  gap: 6px 16px;
   color: var(--lx-ink-2);
   font-size: 12px;
 }
 
-.corr__legend > li {
+.corr__scale {
   display: inline-flex;
+  flex: none;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.corr__scale-label {
+  padding: 0 4px;
+  color: var(--lx-ink-3);
 }
 
 .corr__key {
   display: inline-block;
   flex: none;
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
+  width: 14px;
+  height: 14px;
 }
 
-.corr__key--pos {
-  background: color-mix(in srgb, var(--lx-brass) 45%, var(--lx-panel));
-}
-
-.corr__key--neg {
-  background: color-mix(in srgb, var(--lx-ink-2) 34%, var(--lx-panel));
+.corr__legend-text {
+  flex: 1 1 280px;
+  min-width: 0;
 }
 
 .corr-pairs {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px 24px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 32px;
   padding-top: 12px;
   border-top: 1px solid var(--lx-line);
 }
@@ -582,8 +577,8 @@
 }
 
 .corr-pairs__title {
-  color: var(--lx-ink-2);
-  font-size: 12.5px;
+  color: var(--lx-ink);
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -593,7 +588,7 @@
   gap: 12px;
   padding: 6px 0;
   border-bottom: 1px solid var(--lx-line);
-  font-size: 12.5px;
+  font-size: 13.5px;
 }
 
 .corr-pairs__item:last-child {
@@ -640,13 +635,13 @@
 }
 
 .weights__bar--after {
-  background: var(--lx-brass);
+  background: var(--lx-accent);
 }
 
 .weights__tag {
   margin-left: 6px;
   color: var(--lx-ink-3);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .ledger--weights tr.is-removed :is(th, td) {

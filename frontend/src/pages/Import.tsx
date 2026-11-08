@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { ArrowRight, CircleStop, ClipboardPaste, FilePlus2, ImageUp, Play, RotateCcw, Save, CopyPlus, ShieldCheck, Trash2, X } from 'lucide-react';
+import { RotateCcw, X } from 'lucide-react';
 import type { HoldingInput, SavedPortfolio, ScreenshotCandidate, ScreenshotImport as ScreenshotResult, ScreenshotRow } from '../types';
 import { useLens, type ActionOutcome } from '../state/store';
 import { api, ApiError, errorMessage, isAbort } from '../lib/api';
@@ -14,10 +14,15 @@ import { HoldingsEditor } from '../components/HoldingsEditor';
 type ImportTab = 'screenshot' | 'manual';
 
 export function ImportPage({ tab }: { tab: string | null }) {
+  const { draft } = useLens();
   const active: ImportTab = tab === 'manual' ? 'manual' : 'screenshot';
   return (
     <div className="page import">
-      <PageHeader title="Import" meta="Bring holdings in from a screenshot or enter them by hand. Nothing is analyzed or saved until you choose to." />
+      <PageHeader
+        title="Import"
+        dateline={[`Draft: ${draft.portfolio.name || 'Untitled portfolio'}`]}
+        deck="Add holdings from a screenshot or enter them by hand. Nothing is analyzed or saved until you choose to."
+      />
       <Tabs<ImportTab>
         label="Import method"
         idBase="import"
@@ -26,7 +31,7 @@ export function ImportPage({ tab }: { tab: string | null }) {
         onChange={next => navigate('import', next)}
         items={[
           { id: 'screenshot', label: 'Screenshot' },
-          { id: 'manual', label: 'Manual' },
+          { id: 'manual', label: 'Manual entry' },
         ]}
       />
       <div role="tabpanel" id={panelId('import', active)} aria-labelledby={tabId('import', active)} className="import__panel">
@@ -64,7 +69,7 @@ const EXTENSION_TYPES = new Map([
 const MAX_BYTES = 8 * 1024 * 1024;
 const SEARCH_OPTION = '__search__';
 const SHOT_KEY = 'import-screenshot';
-const PRIVACY = 'Processed on this computer — the image is not stored or uploaded anywhere.';
+const PRIVACY = 'The image is read on this computer. It is not stored or uploaded.';
 
 interface RowChoice {
   include: boolean;
@@ -82,7 +87,7 @@ interface ShotError {
 
 interface ShotState {
   file: File | null;
-  status: 'idle' | 'reading' | 'ready' | 'error' | 'cancelled';
+  status: 'idle' | 'reading' | 'ready' | 'error' | 'canceled';
   startedAt: number | null;
   result: ScreenshotResult | null;
   error: ShotError | null;
@@ -140,7 +145,7 @@ function screenshotError(error: unknown): ShotError {
       case 422:
         return { title: 'The screenshot could not be read', message: said ?? 'The file is not a readable PNG, JPEG, WebP, BMP or GIF image.', retry: false };
       case 503:
-        return { title: 'Screenshot reading is unavailable right now', message: said ?? 'The text-recognition engine on this computer is not available.', retry: true };
+        return { title: 'Screenshots cannot be read right now', message: said ?? 'The text-recognition engine on this computer is not available.', retry: true };
     }
   }
   return { title: 'The screenshot could not be read', message: errorMessage(error), retry: true };
@@ -177,7 +182,7 @@ function cancelReading() {
   shotSequence += 1;
   shotController?.abort();
   shotController = null;
-  setSticky<ShotState>(SHOT_KEY, previous => ({ ...previous, status: 'cancelled', startedAt: null }));
+  setSticky<ShotState>(SHOT_KEY, previous => ({ ...previous, status: 'canceled', startedAt: null }));
 }
 
 function clearScreenshot() {
@@ -204,7 +209,7 @@ function imageType(file: File): string | null {
   return (ending && EXTENSION_TYPES.get(ending)) || null;
 }
 
-/** The file ready to upload (labelled with its accepted image type), or why it cannot be used. */
+/** The file ready to upload (labeled with its accepted image type), or why it cannot be used. */
 function prepareFile(file: File): { file: File } | { problem: string } {
   const type = imageType(file);
   if (!type) return { problem: `“${file.name || 'This file'}” is not a supported image. Use PNG, JPEG, WebP, BMP or GIF.` };
@@ -302,11 +307,9 @@ function ScreenshotTab() {
   const sourceButtons = (
     <>
       <button type="button" className="button button--primary" onClick={() => fileInput.current?.click()}>
-        <ImageUp size={14} aria-hidden="true" />
         {state.file ? 'Choose another image' : 'Choose image'}
       </button>
       <button type="button" className="button" onClick={pasteFromClipboard}>
-        <ClipboardPaste size={14} aria-hidden="true" />
         Paste from clipboard
       </button>
     </>
@@ -339,21 +342,20 @@ function ScreenshotTab() {
           }}
           onDrop={onDrop}
         >
-          <ImageUp size={28} aria-hidden="true" className="dropzone__icon" />
-          <h2 className="dropzone__title">Drop a screenshot of your holdings</h2>
+          <h2 className="dropzone__title">Drop a screenshot of your holdings here</h2>
           <p className="dropzone__text">Or paste it with Ctrl+V (⌘V on a Mac). PNG, JPEG, WebP, BMP or GIF, up to 8 MB.</p>
           <div className="dropzone__actions">{sourceButtons}</div>
           <p className="dropzone__privacy">{PRIVACY}</p>
         </section>
         <ul className="shot-tips" role="list">
           <li>
-            <span className="shot-tips__n">1</span>Crop to the positions table: ticker or name, quantity, and if possible price and value.
+            <span className="shot-tips__n">1.</span>Crop to the positions table: ticker or name, quantity, and if possible price and value.
           </li>
           <li>
-            <span className="shot-tips__n">2</span>Review every row. Suggestions are matched against listed securities, never assumed.
+            <span className="shot-tips__n">2.</span>Review every row. Each suggested security comes from a search of listed securities and needs your confirmation.
           </li>
           <li>
-            <span className="shot-tips__n">3</span>Use the rows you confirm as the draft, then apply the analysis yourself.
+            <span className="shot-tips__n">3.</span>The rows you confirm become the draft. The analysis runs only when you apply it.
           </li>
         </ul>
       </div>
@@ -410,7 +412,8 @@ function ShotImage({ state, sourceButtons }: { state: ShotState; sourceButtons: 
     <Panel
       className="shot-image"
       title="Screenshot"
-      meta={file ? `${file.name || 'Pasted image'} · ${fileSize(file.size)}${result ? ` · ${result.image.width} × ${result.image.height} px` : ''}` : undefined}
+      exhibit={false}
+      meta={file ? `${file.name || 'Pasted image'}, ${fileSize(file.size)}${result ? `, ${result.image.width} × ${result.image.height} px` : ''}` : undefined}
       actions={
         <button type="button" className="icon-button" onClick={clearScreenshot} aria-label="Remove this screenshot and start over" title="Remove this screenshot">
           <X size={16} aria-hidden="true" />
@@ -467,7 +470,6 @@ function ShotStatus({ state }: { state: ShotState }) {
           <p className="waiting__text">Text recognition and security matching usually take 5–20 seconds. {PRIVACY}</p>
           <div className="waiting__actions">
             <button type="button" className="button" onClick={cancelReading}>
-              <CircleStop size={14} aria-hidden="true" />
               Cancel
             </button>
           </div>
@@ -491,14 +493,13 @@ function ShotStatus({ state }: { state: ShotState }) {
           {!state.error.retry && ' Choose another image to continue.'}
         </Notice>
       )}
-      {state.status === 'cancelled' && (
+      {state.status === 'canceled' && (
         <Notice
           tone="info"
-          title="Reading cancelled"
+          title="Reading was canceled"
           actions={
             state.file && (
               <button type="button" className="button" onClick={() => state.file && readScreenshot(state.file)}>
-                <Play size={14} aria-hidden="true" />
                 Read this image
               </button>
             )
@@ -513,14 +514,14 @@ function ShotStatus({ state }: { state: ShotState }) {
 
 const QUANTITY_SOURCE: Record<ScreenshotRow['quantity_source'], string> = {
   column: 'From the quantity column',
-  value_check: 'Fits price × quantity ≈ value on this line',
-  derived_from_value: 'Derived from value ÷ price — check it',
-  single_number: 'Only number on the line — check it',
+  value_check: 'Price × quantity matches the value on this line',
+  derived_from_value: 'Derived from value ÷ price; check it',
+  single_number: 'The only number on the line; check it',
   none: 'No quantity found',
 };
 
 function candidateLabel(candidate: ScreenshotCandidate): string {
-  return [candidate.ticker, candidate.exchange, candidate.currency, isNum(candidate.price) ? quoteNumber(candidate.price, candidate.currency) : null].filter(Boolean).join(' · ');
+  return [candidate.ticker, candidate.exchange, candidate.currency, isNum(candidate.price) ? quoteNumber(candidate.price, candidate.currency) : null].filter(Boolean).join(', ');
 }
 
 interface SearchState {
@@ -532,19 +533,21 @@ interface SearchState {
 
 function ShotSummary({ result }: { result: ScreenshotResult }) {
   return (
-    <Panel className="shot-summary" title="What was found" meta={`${plural(result.rows.length, 'row')} recognised · read at ${fmtTime(result.processed_at)}`}>
+    <Panel
+      className="shot-summary"
+      title="Reading results"
+      meta={`${plural(result.rows.length, 'row')} recognized; read at ${fmtTime(result.processed_at)}`}
+      source="Text recognition on this computer; security matches from Yahoo Finance search."
+    >
       <KeyValue
         className="facts--compact shot-facts"
         items={[
           { label: 'Engine', value: result.engine },
-          { label: 'Column headers', value: result.header_detected ? 'Detected' : 'Not detected — quantities inferred from each line' },
+          { label: 'Column headers', value: result.header_detected ? 'Detected' : 'Not detected; quantities were inferred from each line' },
           { label: 'Currency', value: result.currency_hint ? `Amounts appear to be in ${result.currency_hint}` : 'No currency detected' },
         ]}
       />
-      <p className="shot-facts__privacy">
-        <ShieldCheck size={14} aria-hidden="true" />
-        {PRIVACY}
-      </p>
+      <p className="shot-facts__privacy">{PRIVACY}</p>
       {result.warnings.length > 0 && (
         <Notice tone="warn" title="Check these before using the rows">
           <ul className="plain-list" role="list">
@@ -641,11 +644,18 @@ function ShotReview({ state, result }: { state: ShotState; result: ScreenshotRes
   return (
     <>
       {result.rows.length === 0 ? (
-        <Notice tone="info" title="No holdings rows were recognised">
+        <Notice tone="info" title="No holdings were recognized">
           Try a tighter crop that shows the ticker or name and the quantity for each position, or enter the holdings on the Manual tab.
         </Notice>
       ) : (
-        <Panel className="shot-table" title="Review rows" meta="Rows start unticked when the security, quantity or consistency check needs your attention." flush>
+        <Panel
+          className="shot-table"
+          title="Review rows"
+          exhibit={false}
+          meta="Rows start unticked when the security, quantity or consistency check needs attention."
+          source="Text recognition on this computer; matches and prices from Yahoo Finance."
+          flush
+        >
           <ScrollRegion label="Screenshot review rows" className="review__scroll">
             <table className="ledger ledger--review">
               <caption className="sr-only">Rows read from the screenshot. Choose the security and quantity for each row you want to use.</caption>
@@ -705,8 +715,8 @@ function ShotReview({ state, result }: { state: ShotState; result: ScreenshotRes
                         {(isNum(row.screenshot_price) || isNum(row.screenshot_value)) && (
                           <span className="review__figures">
                             {isNum(row.screenshot_price) && <>Price {num(row.screenshot_price, 4, 2)}</>}
-                            {isNum(row.screenshot_price) && isNum(row.screenshot_value) && ' · '}
-                            {isNum(row.screenshot_value) && <>Value {num(row.screenshot_value, 2)}</>}
+                            {isNum(row.screenshot_price) && isNum(row.screenshot_value) && ', '}
+                            {isNum(row.screenshot_value) && <>{isNum(row.screenshot_price) ? 'value' : 'Value'} {num(row.screenshot_value, 2)}</>}
                           </span>
                         )}
                         {blocker && (
@@ -729,7 +739,7 @@ function ShotReview({ state, result }: { state: ShotState; result: ScreenshotRes
                             update(row.id, { ticker: value || null });
                           }}
                         >
-                          <option value="">{options.length ? 'Choose a security…' : 'No match — search…'}</option>
+                          <option value="">{options.length ? 'Choose a security…' : 'No match found'}</option>
                           {options.map(option => (
                             <option key={option.ticker} value={option.ticker}>
                               {candidateLabel(option)}
@@ -818,7 +828,7 @@ function ShotReview({ state, result }: { state: ShotState; result: ScreenshotRes
               <summary>{plural(result.ignored_lines.length, 'line')} ignored (headers, totals or text without holdings)</summary>
               <ul className="ignored__list" role="list">
                 {result.ignored_lines.map((line, index) => (
-                  <li key={index} className="mono">
+                  <li key={index}>
                     {line.text}
                   </li>
                 ))}
@@ -852,7 +862,7 @@ function ShotReview({ state, result }: { state: ShotState; result: ScreenshotRes
             )}
           </p>
           <fieldset className="choice">
-            <legend className="field__label">Into the draft “{draft.portfolio.name || 'Untitled portfolio'}”</legend>
+            <legend className="field__label">Draft “{draft.portfolio.name || 'Untitled portfolio'}”</legend>
             <label className="choice__option">
               <input
                 type="radio"
@@ -874,7 +884,7 @@ function ShotReview({ state, result }: { state: ShotState; result: ScreenshotRes
               />
               <span>
                 <span className="choice__title">Add to current draft</span>
-                <span className="choice__text">Matching tickers are merged by summing shares (maximum {limit} holdings).</span>
+                <span className="choice__text">Shares of matching tickers are added together (maximum {limit} holdings).</span>
               </span>
             </label>
           </fieldset>
@@ -886,7 +896,6 @@ function ShotReview({ state, result }: { state: ShotState; result: ScreenshotRes
           <div className="action-row">
             <button type="button" className="button button--primary" disabled={!holdings.length} onClick={use}>
               Use {plural(holdings.length, 'holding')}
-              <ArrowRight size={14} aria-hidden="true" />
             </button>
             <p className="action-row__note faint">Sets the draft only. Nothing is saved or analyzed until you apply it on the Risk page.</p>
           </div>
@@ -996,25 +1005,19 @@ function ManualTab() {
   const sourceLine =
     source.kind === 'saved' ? (
       <>
-        Saved portfolio · revision {source.revision}
-        {savedSource ? ` · updated ${relative(savedSource.updated_at, now)}` : ''}
-        {draftDirty ? (
-          <Badge tone="warn">Unsaved changes</Badge>
-        ) : (
-          <Badge tone="neutral">No unsaved changes</Badge>
-        )}
+        Saved portfolio, revision {source.revision}
+        {savedSource ? `, updated ${relative(savedSource.updated_at, now)}` : ''}.{' '}
+        {draftDirty ? <Badge tone="warn">Unsaved changes.</Badge> : 'No unsaved changes.'}
       </>
     ) : source.kind === 'example' ? (
-      <>
-        <Badge tone="warn">Example — not your holdings</Badge> Saving creates your own copy on this computer.
-      </>
+      'Example portfolio with hypothetical holdings. Saving creates your own copy on this computer.'
     ) : (
-      <>New portfolio · not saved yet</>
+      'New portfolio. It has not been saved yet.'
     );
 
   return (
     <div className="grid manual">
-      <Panel className="col-8 col-wide-md" title="Draft portfolio" meta={sourceLine}>
+      <Panel className="col-8 col-wide-md" title="Draft portfolio" meta={sourceLine} exhibit={false}>
         <div className="manual__fields">
           <div className="field manual__name">
             <label className="field__label" htmlFor={`${ids}-name`}>
@@ -1061,7 +1064,7 @@ function ManualTab() {
           caption="Draft holdings"
         />
         {showProblems && check.messages.length > 0 && (
-          <Notice tone="error" title="Before saving or analyzing" live>
+          <Notice tone="error" title="Fix these before saving or analyzing" live>
             <ul className="plain-list" role="list">
               {check.messages.map(message => (
                 <li key={message}>{message}</li>
@@ -1084,7 +1087,6 @@ function ManualTab() {
                     </button>
                   )}
                   <button type="button" className="button" onClick={() => runSave(true)} disabled={busy !== null}>
-                    <CopyPlus size={14} aria-hidden="true" />
                     Save as copy
                   </button>
                 </>
@@ -1103,18 +1105,17 @@ function ManualTab() {
               disabled={busy !== null || (source.kind === 'saved' && !draftDirty)}
               title={source.kind === 'saved' && !draftDirty ? 'No changes to save' : undefined}
             >
-              {busy === 'save' ? <Spinner /> : <Save size={14} aria-hidden="true" />}
+              {busy === 'save' && <Spinner />}
               {source.kind === 'saved' ? 'Save' : 'Save to this computer'}
             </button>
             {source.kind === 'saved' && (
               <button type="button" className="button" onClick={() => runSave(true)} disabled={busy !== null}>
-                {busy === 'copy' ? <Spinner /> : <CopyPlus size={14} aria-hidden="true" />}
+                {busy === 'copy' && <Spinner />}
                 Save as copy
               </button>
             )}
           </div>
           <button type="button" className="button button--primary" onClick={analyze}>
-            <Play size={14} aria-hidden="true" />
             Analyze
           </button>
         </div>
@@ -1123,15 +1124,15 @@ function ManualTab() {
       <Panel
         className="col-4 col-wide-md library"
         title="Library"
+        exhibit={false}
         meta="Saved on this computer"
         actions={
           <button type="button" className="button button--small" onClick={() => requestOpen({ kind: 'new' })}>
-            <FilePlus2 size={14} aria-hidden="true" />
             New portfolio
           </button>
         }
       >
-        <h3 className="section-title">Your portfolios</h3>
+        <h3 className="section-title">Saved portfolios</h3>
         {savedError && (
           <Notice
             tone="error"
@@ -1146,7 +1147,7 @@ function ManualTab() {
             {savedError}
           </Notice>
         )}
-        {!savedError && sorted.length === 0 && <p className="faint library__empty">Nothing saved yet. Saved portfolios stay on this computer.</p>}
+        {!savedError && sorted.length === 0 && <p className="faint library__empty">No portfolios are saved yet. Saved portfolios stay on this computer.</p>}
         {sorted.length > 0 && (
           <ul className="library__list" role="list">
             {sorted.map(portfolio => {
@@ -1159,7 +1160,7 @@ function ManualTab() {
                       {current && <span className="sr-only"> (open in the editor)</span>}
                     </p>
                     <p className="library__meta">
-                      {plural(portfolio.holdings.length, 'holding')} · {portfolio.base_currency} · updated {relative(portfolio.updated_at, now)}
+                      {plural(portfolio.holdings.length, 'holding')} in {portfolio.base_currency}, updated {relative(portfolio.updated_at, now)}
                     </p>
                   </div>
                   <div className="library__actions">
@@ -1174,15 +1175,14 @@ function ManualTab() {
                     </button>
                     <button
                       type="button"
-                      className="icon-button icon-button--small"
+                      className="button button--quiet button--small"
                       aria-label={`Delete ${portfolio.name}`}
-                      title="Delete"
                       onClick={() => {
                         setDeleteError(null);
                         setDeleting(portfolio);
                       }}
                     >
-                      <Trash2 size={14} aria-hidden="true" />
+                      Delete
                     </button>
                   </div>
                 </li>
@@ -1202,7 +1202,7 @@ function ManualTab() {
                   <div className="library__text">
                     <p className="library__name">{example.name}</p>
                     <p className="library__meta">
-                      Example — not your holdings · {plural(example.holdings.length, 'holding')} · {example.base_currency}
+                      Hypothetical, {plural(example.holdings.length, 'holding')} in {example.base_currency}
                     </p>
                   </div>
                   <div className="library__actions">
@@ -1219,7 +1219,7 @@ function ManualTab() {
 
       <ConfirmDialog
         open={opening !== null}
-        title="Replace the draft?"
+        title="Replace the draft"
         confirmLabel="Replace draft"
         onCancel={() => setOpening(null)}
         onConfirm={() => {
@@ -1232,8 +1232,8 @@ function ManualTab() {
 
       <ConfirmDialog
         open={confirmReload}
-        title="Reload the saved version?"
-        confirmLabel="Reload and discard my edits"
+        title="Reload the saved version"
+        confirmLabel="Reload and discard edits"
         danger
         busy={busy === 'reload'}
         onCancel={() => setConfirmReload(false)}
@@ -1246,12 +1246,12 @@ function ManualTab() {
           setOutcome(result);
         }}
       >
-        <p>This replaces your draft with the version saved most recently, including changes made in another window. Your current edits are discarded.</p>
+        <p>The draft is replaced with the most recently saved version, including changes made in another window. Current edits are discarded.</p>
       </ConfirmDialog>
 
       <ConfirmDialog
         open={deleting !== null}
-        title={deleting ? `Delete “${deleting.name}”?` : 'Delete portfolio?'}
+        title={deleting ? `Delete “${deleting.name}”` : 'Delete portfolio'}
         confirmLabel="Delete"
         danger
         busy={deleteBusy}

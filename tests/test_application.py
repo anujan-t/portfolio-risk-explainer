@@ -104,7 +104,7 @@ class AnalyticsTests(unittest.TestCase):
         self.assertAlmostEqual(result["risk"]["annual_volatility"], result["risk"]["period_volatility"] * np.sqrt(252))
         self.assertEqual(result["series"][0]["portfolio"], 100)
         self.assertGreater(result["concentration"]["fund_weight"], 0)
-        self.assertIn("not an LLM", result["explanation_method"])
+        self.assertIn("no language model", result["explanation_method"])
 
     def test_minor_units_and_fx_are_applied_once(self):
         portfolio = {**PORTFOLIO, "holdings": [{"ticker": "LONSTOCK", "shares": 100}]}
@@ -440,11 +440,31 @@ class MarketTests(unittest.TestCase):
         limited = Mock(status_code=429)
         limited.raise_for_status.side_effect = requests.exceptions.HTTPError(response=limited)
         request.return_value = limited
-        with self.assertRaisesRegex(MarketUnavailable, "rate-limiting"):
+        with self.assertLogs("backend.market", "WARNING"), self.assertRaisesRegex(MarketUnavailable, "rate-limiting"):
             self.market.chart("AAA")
         self.assertEqual(request.call_count, 2)
 
     @patch("backend.market.requests.get", side_effect=requests.exceptions.Timeout("timeout"))
     def test_timeout_is_explicit(self, request):
-        with self.assertRaisesRegex(MarketUnavailable, "unavailable"):
+        with self.assertLogs("backend.market", "WARNING"), self.assertRaisesRegex(MarketUnavailable, "could not reach Yahoo Finance"):
             self.market.chart("AAA")
+
+    @patch("backend.market.requests.get",
+           side_effect=OSError("Could not find a suitable TLS CA certificate bundle, invalid path: C:\\Users\\someone\\cacert.pem"))
+    def test_connection_errors_do_not_expose_local_details(self, request):
+        with self.assertLogs("backend.market", "WARNING") as logged, self.assertRaises(MarketUnavailable) as caught:
+            self.market.chart("AAA")
+        message = str(caught.exception)
+        self.assertIn("could not reach Yahoo Finance", message)
+        for detail in ("OSError", "C:\\", "certificate", "cacert.pem"):
+            self.assertNotIn(detail, message)
+        self.assertTrue(any("cacert.pem" in line for line in logged.output))  # the details are kept for the log
+
+    @patch("backend.market.requests.get")
+    def test_unreadable_responses_are_reported_plainly(self, request):
+        response = Mock(status_code=200)
+        response.json.side_effect = ValueError("Expecting value: line 1 column 1 (char 0)")
+        request.return_value = response
+        with self.assertLogs("backend.market", "WARNING"), self.assertRaises(MarketUnavailable) as caught:
+            self.market.chart("AAA")
+        self.assertEqual(str(caught.exception), "Yahoo Finance returned data that could not be read. Try again later.")

@@ -1,4 +1,8 @@
-/* Night Ledger — base layer. Colours come only from the --lx-* tokens defined in index.html. */
+/* Base layer. Colors and font stacks come only from the --lx-* tokens defined in index.html. */
+
+:root {
+  --lx-page-width: 1180px;
+}
 
 *,
 *::before,
@@ -9,7 +13,7 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  scroll-padding-top: 104px;
+  scroll-padding-top: 116px;
 }
 
 body {
@@ -20,6 +24,7 @@ body {
   font-family: var(--lx-text);
   font-size: 14px;
   line-height: 1.5;
+  font-kerning: normal;
   font-variant-numeric: tabular-nums lining-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -103,7 +108,7 @@ table {
 }
 
 ::selection {
-  background: var(--lx-brass-soft);
+  background: var(--lx-accent-soft);
   color: var(--lx-ink);
 }
 
@@ -126,8 +131,15 @@ table {
 
 .mono {
   font-family: var(--lx-mono);
-  font-size: 0.93em;
+  font-size: 0.9em;
   letter-spacing: 0;
+}
+
+/* Serif reading text: explanations, notes and the Method page. */
+.prose {
+  font-family: var(--lx-serif);
+  font-size: 16px;
+  line-height: 1.55;
 }
 
 .num {
@@ -149,7 +161,7 @@ table {
 }
 
 .display {
-  font-family: var(--lx-display);
+  font-family: var(--lx-serif);
 }
 
 /* ---- Skip link ---------------------------------------------------------------------- */
@@ -160,9 +172,9 @@ table {
   top: -64px;
   z-index: 100;
   padding: 8px 12px;
-  border-radius: 4px;
-  background: var(--lx-brass);
-  color: var(--lx-brass-ink);
+  border-radius: 2px;
+  background: var(--lx-accent);
+  color: var(--lx-accent-ink);
   font-weight: 600;
   text-decoration: none;
 }
@@ -175,12 +187,14 @@ table {
 
 .page {
   width: 100%;
-  max-width: 1440px;
+  max-width: var(--lx-page-width);
   margin: 0 auto;
-  padding: 24px 24px 64px;
+  padding: 28px 24px 64px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 32px;
+  /* Exhibits are numbered per page, as in a printed research note. */
+  counter-reset: exhibit;
 }
 
 .page > * {
@@ -201,7 +215,7 @@ body:has(dialog[open]) {
 .grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 16px;
+  gap: 36px 32px;
   align-items: start;
 }
 
@@ -237,7 +251,7 @@ body:has(dialog[open]) {
 
 .stack {
   display: grid;
-  gap: 16px;
+  gap: 32px;
   min-width: 0;
 }
 
@@ -283,18 +297,13 @@ body:has(dialog[open]) {
   }
 }
 
-@media (max-width: 960px) {
-  html {
-    scroll-padding-top: 146px;
-  }
-}
-
 @media (max-width: 600px) {
   .page {
-    padding: 16px 16px 48px;
+    padding: 20px 16px 48px;
+    gap: 28px;
   }
   .grid {
-    gap: 12px;
+    gap: 28px;
   }
 }
 

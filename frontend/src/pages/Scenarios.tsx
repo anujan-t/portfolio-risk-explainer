@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { CircleStop, Play, RotateCcw } from 'lucide-react';
 import type { Analysis, HoldingInput, ScenarioResponse } from '../types';
 import { useLens, type Applied } from '../state/store';
 import { api, errorMessage, isAbort, type ScenarioRequest } from '../lib/api';
@@ -7,7 +6,7 @@ import { setSticky, useElapsedSeconds, useSticky } from '../lib/hooks';
 import { amount, currencyDigits, frequencyLabel, horizonLabel, isNum, num, percent, plural, rangeWords, signedNum } from '../lib/format';
 import { checkPortfolio, sameHoldings } from '../lib/portfolio';
 import { AnalysisStatus, NoAnalysis, PageHeader } from '../components/page';
-import { Badge, Delta, ExampleBadge, Notice, Panel, ScrollRegion, Spinner, cx } from '../components/ui';
+import { Delta, Notice, Panel, ScrollRegion, Spinner, cx } from '../components/ui';
 import { HoldingsEditor } from '../components/HoldingsEditor';
 
 interface ScenarioRun {
@@ -121,13 +120,16 @@ function cancelScenario() {
 }
 
 export function ScenariosPage() {
-  const { applied } = useLens();
+  const { applied, draft } = useLens();
+  const name = applied?.request.portfolio.name ?? draft.portfolio.name;
   return (
     <div className="page scenarios">
-      <PageHeader title="Scenarios" meta="Change share counts or add and remove holdings, then compare against the applied portfolio.">
-        <Badge tone="brass">Unsaved what-if — nothing is traded</Badge>
-        {applied?.hypothetical && <ExampleBadge />}
-      </PageHeader>
+      <PageHeader
+        title="Scenarios"
+        dateline={[name, applied ? 'Compared with the applied analysis' : 'No analysis applied yet']}
+        deck="Change share counts or add and remove holdings, then compare the result with the applied portfolio. What-if holdings are not saved and nothing is traded."
+        example={applied?.hypothetical}
+      />
       <AnalysisStatus />
       {applied ? <ScenarioWorkbench applied={applied} /> : <NoAnalysis what="Scenarios" />}
     </div>
@@ -172,11 +174,10 @@ function ScenarioWorkbench({ applied }: { applied: Applied }) {
       {basisChanged && edited && !samePortfolio && (
         <Notice
           tone="info"
-          title="The applied analysis changed since this what-if was started"
+          title="The applied analysis has changed since this what-if began"
           actions={
             <>
               <button type="button" className="button" onClick={() => startOver(applied)}>
-                <RotateCcw size={14} aria-hidden="true" />
                 Start from “{portfolio.name}”
               </button>
               <button type="button" className="button button--quiet" onClick={() => rebase(applied)}>
@@ -185,27 +186,21 @@ function ScenarioWorkbench({ applied }: { applied: Applied }) {
             </>
           }
         >
-          Your what-if holdings came from “{state.basisName}”. Comparisons always start from the applied portfolio, with its benchmark, range and return frequency.
+          The what-if holdings came from “{state.basisName}”. Comparisons always use the applied portfolio, with its benchmark, range and return frequency.
         </Notice>
       )}
       <div className="grid scenario-grid">
         <Panel
           className="col-5 col-wide-md"
           title="What-if holdings"
+          exhibit={false}
           meta={
-            state.basisId !== null && state.origin !== portfolio.name ? (
-              <>
-                Edited from “{state.origin}” · compared with “{portfolio.name}” · unsaved
-              </>
-            ) : (
-              <>
-                Copy of “{portfolio.name}” · {portfolio.base_currency} · unsaved
-              </>
-            )
+            state.basisId !== null && state.origin !== portfolio.name
+              ? `Edited from “${state.origin}” and compared with “${portfolio.name}”. Not saved.`
+              : `A copy of “${portfolio.name}” in ${portfolio.base_currency}. Not saved.`
           }
           actions={
             <button type="button" className="button button--quiet button--small" onClick={() => startOver(applied)} disabled={unchanged && !state.result}>
-              <RotateCcw size={14} aria-hidden="true" />
               Reset
             </button>
           }
@@ -229,24 +224,23 @@ function ScenarioWorkbench({ applied }: { applied: Applied }) {
           <div className="action-row">
             {running ? (
               <button type="button" className="button" onClick={cancelScenario}>
-                <CircleStop size={14} aria-hidden="true" />
                 Cancel comparison
               </button>
             ) : (
               <button type="button" className="button button--primary" onClick={compare} disabled={basisChanged}>
-                <Play size={14} aria-hidden="true" />
                 Compare
               </button>
             )}
             <p className="action-row__note faint">
-              vs <span className="mono">{applied.request.benchmark}</span> · {rangeWords(applied.request.range)} · {frequencyLabel(applied.request.frequency)} returns
+              Against <span className="mono">{applied.request.benchmark}</span> over {rangeWords(applied.request.range)}, {frequencyLabel(applied.request.frequency).toLowerCase()} frequency
             </p>
           </div>
         </Panel>
         <Panel
           className="col-7 col-wide-md"
           title="Comparison"
-          meta={result ? `Applied portfolio vs what-if · same benchmark, range and frequency` : 'Run a comparison to see the effect of your edits'}
+          meta={result ? 'Applied portfolio and what-if, with the same benchmark, range and frequency' : 'Select Compare to see the effect of the edits'}
+          source="Yahoo Finance daily closes, dividends and exchange rates; LENS calculations."
         >
           <div aria-live="polite">
             {running && (
@@ -266,13 +260,13 @@ function ScenarioWorkbench({ applied }: { applied: Applied }) {
           </div>
           {!running && !result && !state.error && (
             <p className="faint">
-              {unchanged ? 'Edit share counts, add or remove holdings in the what-if editor, then select Compare.' : 'Select Compare to see how your edits change risk and weights.'}
+              {unchanged ? 'Edit share counts, or add and remove holdings in the what-if editor, then select Compare.' : 'Select Compare to see how the edits change risk and weights.'}
             </p>
           )}
           {result && (
             <>
               {stale && !running && (
-                <Notice tone="warn" title="Edited since this comparison">
+                <Notice tone="warn" title="The holdings have changed since this comparison">
                   The figures below describe the holdings as they were when you selected Compare. Compare again to update them.
                 </Notice>
               )}
@@ -329,7 +323,7 @@ function ComparisonTable({ response }: { response: ScenarioResponse }) {
     {
       label: (
         <>
-          Beta vs <span className="mono">{scenario.benchmark.ticker}</span>
+          Beta to <span className="mono">{scenario.benchmark.ticker}</span>
         </>
       ),
       before: num(baseline.risk.beta, 2),
@@ -343,20 +337,20 @@ function ComparisonTable({ response }: { response: ScenarioResponse }) {
       change: <Delta tone="neutral" kind="number" digits={2} value={shownChange(scenario.risk.benchmark_correlation, baseline.risk.benchmark_correlation, 2)} />,
     },
     {
-      label: 'Max drawdown',
+      label: 'Maximum drawdown',
       before: percent(baseline.risk.max_drawdown, 1),
       after: percent(scenario.risk.max_drawdown, 1),
       change: points(scenario.risk.max_drawdown, baseline.risk.max_drawdown),
     },
     // Tail losses are small numbers, so they get a second decimal to make modest changes visible.
     {
-      label: `VaR 95 · ${horizon}`,
+      label: `Value at risk, 95%, ${horizon}`,
       before: percent(baseline.risk.historical_var_95, 2),
       after: percent(scenario.risk.historical_var_95, 2),
       change: points(scenario.risk.historical_var_95, baseline.risk.historical_var_95, 2),
     },
     {
-      label: `ES 95 · ${horizon}`,
+      label: `Expected shortfall, 95%, ${horizon}`,
       before: percent(baseline.risk.historical_es_95, 2),
       after: percent(scenario.risk.historical_es_95, 2),
       change: points(scenario.risk.historical_es_95, baseline.risk.historical_es_95, 2),
@@ -413,7 +407,7 @@ function ComparisonTable({ response }: { response: ScenarioResponse }) {
         </table>
       </ScrollRegion>
       <p className="panel__foot faint">
-        Changes are shown as ▲ higher / ▼ lower, without judging them as good or bad, and are taken between the figures as shown. Percentage-point changes are marked “pp”.
+        Each change is the what-if figure minus the applied figure, as shown, and is not colored as good or bad. Percentage-point changes are marked pp.
       </p>
     </>
   );
@@ -473,7 +467,7 @@ function WeightsTable({ baseline, scenario }: { baseline: Analysis; scenario: An
                   {row.before === 0 && <span className="weights__tag">new</span>}
                   {row.after === 0 && <span className="weights__tag">removed</span>}
                 </th>
-                <td className="num" title={`Applied ${num(row.sharesBefore, 6, 0)} → what-if ${num(row.sharesAfter, 6, 0)}`}>
+                <td className="num" title={`Applied ${num(row.sharesBefore, 6, 0)}, what-if ${num(row.sharesAfter, 6, 0)}`}>
                   {row.sharesBefore === row.sharesAfter ? num(row.sharesAfter, 6, 0) : `${num(row.sharesBefore, 6, 0)} → ${num(row.sharesAfter, 6, 0)}`}
                 </td>
                 <td className="num">{percent(row.before, 1)}</td>

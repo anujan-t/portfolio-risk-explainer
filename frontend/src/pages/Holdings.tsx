@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, RotateCcw, TriangleAlert, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, RotateCcw, X } from 'lucide-react';
 import type { Analysis, AssetHistory, HistoryRange, ValuedHolding } from '../types';
 import { useAppliedNews, useLens } from '../state/store';
 import { api, errorMessage, isAbort } from '../lib/api';
@@ -23,7 +23,7 @@ import {
 } from '../lib/format';
 import { canonicalSector, newsForTicker, sectorExposures } from '../lib/derive';
 import { AnalysisStatus, NoAnalysis, PageHeader } from '../components/page';
-import { Delta, Drawer, ExampleBadge, KeyValue, Notice, Panel, Segmented, Spinner, Tabs, cx, panelId, tabId } from '../components/ui';
+import { Delta, Drawer, KeyValue, Notice, Panel, Segmented, Spinner, Tabs, cx, panelId, tabId } from '../components/ui';
 import { CompositionBar, WeightMeter, type CompositionItem } from '../components/Bars';
 import { PriceChart } from '../components/charts/PriceChart';
 import { NewsList } from '../components/News';
@@ -86,33 +86,27 @@ function sortHoldings(holdings: ValuedHolding[], sort: Sort): ValuedHolding[] {
 }
 
 export function HoldingsPage() {
-  const { applied } = useLens();
+  const { applied, draft } = useLens();
   const analysis = applied?.analysis ?? null;
   const [selected, setSelected] = useState<string | null>(null);
   const holding = analysis?.holdings.find(entry => entry.ticker === selected) ?? null;
+  const name = analysis?.portfolio.name ?? draft.portfolio.name;
 
   return (
     <div className="page holdings">
       <PageHeader
         title="Holdings"
-        meta={
-          analysis ? (
-            <>
-              <span>{analysis.portfolio.name}</span>
-              <span className="page-head__sep" aria-hidden="true" />
-              <span>
-                {plural(analysis.holdings.length, 'holding')} valued in {analysis.portfolio.base_currency}
-              </span>
-              <span className="page-head__sep" aria-hidden="true" />
-              <span>Prices: completed closes to {shortDate(analysis.session.latest_date ?? analysis.coverage.end_date)}</span>
-            </>
-          ) : (
-            'Positions from the applied analysis'
-          )
-        }
-      >
-        {applied?.hypothetical && <ExampleBadge />}
-      </PageHeader>
+        dateline={[
+          name,
+          ...(analysis
+            ? [
+                `${plural(analysis.holdings.length, 'holding')} valued in ${analysis.portfolio.base_currency}`,
+                `Prices to ${shortDate(analysis.session.latest_date ?? analysis.coverage.end_date)}`,
+              ]
+            : []),
+        ]}
+        example={applied?.hypothetical}
+      />
       <AnalysisStatus />
       {analysis ? (
         <>
@@ -154,7 +148,8 @@ function Composition({ analysis }: { analysis: Analysis }) {
     <Panel
       className="composition"
       title="Composition"
-      meta="Share of portfolio value"
+      meta={`Share of portfolio value by ${words[view]}`}
+      source="Yahoo Finance closes, exchange rates and sector classifications; LENS calculations."
       actions={
         <Tabs<CompositionView>
           label="Group composition by"
@@ -180,11 +175,11 @@ function Composition({ analysis }: { analysis: Analysis }) {
           items={[
             { label: 'Positions', value: num(concentration.positions, 0) },
             { label: 'Effective positions', value: <span title="1 ÷ HHI: the number of equal-weight holdings with the same concentration">{num(concentration.effective_positions, 1)}</span> },
-            { label: 'Largest', value: <><span className="mono">{concentration.largest_position}</span> · {percent(concentration.largest_weight, 1)}</> },
-            { label: 'Top 3', value: percent(concentration.top_3_weight, 1) },
-            { label: 'HHI', value: <span title="Herfindahl–Hirschman index: sum of squared weights">{num(concentration.hhi, 3)}</span> },
-            { label: 'Funds, no look-through', value: percent(concentration.fund_weight, 1) },
-            { label: 'Unknown sector', value: percent(concentration.unknown_sector_weight, 1) },
+            { label: 'Largest', value: <><span className="mono">{concentration.largest_position}</span> ({percent(concentration.largest_weight, 1)})</> },
+            { label: 'Top 3 holdings', value: percent(concentration.top_3_weight, 1) },
+            { label: 'HHI', value: <span title="Herfindahl–Hirschman index: the sum of squared weights">{num(concentration.hhi, 3)}</span> },
+            { label: 'Funds (not looked through)', value: percent(concentration.fund_weight, 1) },
+            { label: 'Sector unknown', value: percent(concentration.unknown_sector_weight, 1) },
           ]}
         />
       </div>
@@ -192,7 +187,7 @@ function Composition({ analysis }: { analysis: Analysis }) {
   );
 }
 
-// ---- Ledger --------------------------------------------------------------------------------
+// ---- Positions ------------------------------------------------------------------------------
 
 function HoldingsLedger({ analysis, onOpen }: { analysis: Analysis; onOpen: (ticker: string) => void }) {
   const [sort, setSort] = useSticky<Sort>('holdings-sort', () => ({ key: 'weight', direction: 'desc' }));
@@ -202,6 +197,7 @@ function HoldingsLedger({ analysis, onOpen }: { analysis: Analysis; onOpen: (tic
   const weightSum = analysis.holdings.reduce((sum, holding) => sum + holding.weight, 0);
   const riskValues = analysis.holdings.map(holding => holding.risk_contribution).filter(isNum);
   const riskSum = riskValues.length ? riskValues.reduce((sum, value) => sum + value, 0) : null;
+  const flagged = analysis.holdings.some(holding => holding.warnings.length > 0);
   const minorUnits = [
     ...new Set(
       analysis.holdings
@@ -217,14 +213,14 @@ function HoldingsLedger({ analysis, onOpen }: { analysis: Analysis; onOpen: (tic
     { key: 'currency', label: 'Quote', numeric: false, title: 'Currency the price is quoted in' },
     { key: 'shares', label: 'Shares', numeric: true },
     { key: 'price', label: 'Last close', numeric: true, title: 'Latest completed close, in quote units' },
-    { key: 'fx', label: `FX → ${base}`, numeric: true, title: `Base units per 1 unit of the holding’s ISO currency` },
-    { key: 'value', label: `Value ${base}`, numeric: true },
+    { key: 'fx', label: `FX to ${base}`, numeric: true, title: `${base} per unit of the holding’s ISO currency` },
+    { key: 'value', label: `Value (${base})`, numeric: true },
     { key: 'weight', label: 'Weight', numeric: true },
-    { key: 'session', label: 'Session', numeric: true, title: 'Latest completed session, local currency' },
-    { key: 'm1', label: '1M', numeric: true, title: 'One-month total return, local currency' },
-    { key: 'y1', label: '1Y', numeric: true, title: 'One-year total return, local currency' },
-    { key: 'vol', label: 'Volatility', numeric: true, title: 'Annualised volatility' },
-    { key: 'risk', label: 'Risk share', numeric: true, title: 'Share of portfolio variance; negative = historical offset' },
+    { key: 'session', label: 'Session', numeric: true, title: 'Return over the latest completed session, in the quote currency' },
+    { key: 'm1', label: '1M', numeric: true, title: 'One-month total return, in the quote currency' },
+    { key: 'y1', label: '1Y', numeric: true, title: 'One-year total return, in the quote currency' },
+    { key: 'vol', label: 'Volatility', numeric: true, title: 'Annualized volatility' },
+    { key: 'risk', label: 'Risk share', numeric: true, title: 'Share of portfolio variance. A negative share means the holding offset risk over the period.' },
   ];
 
   const toggle = (key: SortKey) =>
@@ -233,11 +229,12 @@ function HoldingsLedger({ analysis, onOpen }: { analysis: Analysis; onOpen: (tic
   return (
     <Panel
       className="ledger-panel"
-      title="Ledger"
-      meta={`Session, 1M and 1Y are total returns in each holding’s own currency · values in ${base}`}
+      title="Positions"
+      meta={`Values in ${base}. Session, 1M and 1Y are total returns in each holding’s quote currency.`}
+      source="Yahoo Finance daily closes, dividends and exchange rates; LENS calculations."
       flush
     >
-      <div className="table-scroll" role="region" aria-label="Holdings ledger" tabIndex={0}>
+      <div className="table-scroll" role="region" aria-label="Positions table" tabIndex={0}>
         <table className="ledger ledger--holdings">
           <caption className="sr-only">
             Holdings, sorted by {columns.find(column => column.key === sort.key)?.label} {sort.direction === 'asc' ? 'ascending' : 'descending'}. Select a ticker to open its details.
@@ -289,7 +286,9 @@ function HoldingsLedger({ analysis, onOpen }: { analysis: Analysis; onOpen: (tic
                       {holding.ticker}
                       {holding.warnings.length > 0 && (
                         <>
-                          <TriangleAlert size={12} aria-hidden="true" className="ticker-button__warn" />
+                          <span className="ticker-button__warn" aria-hidden="true">
+                            *
+                          </span>
                           <span className="sr-only"> (has data warnings)</span>
                         </>
                       )}
@@ -306,7 +305,7 @@ function HoldingsLedger({ analysis, onOpen }: { analysis: Analysis; onOpen: (tic
                   </td>
                   <td
                     className="num"
-                    title={sameCurrency ? 'Same currency as the base' : `1 ${holding.currency_iso} = ${num(holding.fx_rate, 6)} ${base} on ${fmtDate(holding.fx_date)}`}
+                    title={sameCurrency ? `Quoted in ${base}` : `1 ${holding.currency_iso} = ${num(holding.fx_rate, 6)} ${base} on ${fmtDate(holding.fx_date)}`}
                   >
                     {sameCurrency ? <span className="faint">{fxRate(1)}</span> : fxRate(holding.fx_rate)}
                   </td>
@@ -317,7 +316,7 @@ function HoldingsLedger({ analysis, onOpen }: { analysis: Analysis; onOpen: (tic
                       <WeightMeter weight={holding.weight} max={maxWeight} />
                     </span>
                   </td>
-                  <td className="num" title={holding.session ? `${fmtDate(holding.session.date)} vs ${fmtDate(holding.session.previous_date)}` : 'No completed session'}>
+                  <td className="num" title={holding.session ? `Close on ${fmtDate(holding.session.date)} against ${fmtDate(holding.session.previous_date)}` : 'No completed session'}>
                     <Delta value={holding.session?.return_local} />
                   </td>
                   <td className="num">
@@ -327,7 +326,7 @@ function HoldingsLedger({ analysis, onOpen }: { analysis: Analysis; onOpen: (tic
                     <Delta value={holding.period_returns.y1} />
                   </td>
                   <td className="num">{percent(holding.annual_volatility, 1)}</td>
-                  <td className="num" title={isNum(holding.risk_contribution) && holding.risk_contribution < 0 ? 'Historical offset: this holding reduced portfolio variance' : undefined}>
+                  <td className="num" title={isNum(holding.risk_contribution) && holding.risk_contribution < 0 ? 'This holding reduced portfolio variance over the period' : undefined}>
                     {percent(holding.risk_contribution, 1)}
                   </td>
                 </tr>
@@ -344,12 +343,12 @@ function HoldingsLedger({ analysis, onOpen }: { analysis: Analysis; onOpen: (tic
               </td>
               <td className="num">{amount(analysis.total_value, base)}</td>
               <td className="num">{percent(weightSum, 1)}</td>
-              <td className="num" title={`Portfolio, in ${base}, covering ${percent(analysis.session.covered_weight, 0)} of holdings`}>
+              <td className="num" title={`Portfolio return in ${base}; covers ${percent(analysis.session.covered_weight, 0)} of value`}>
                 <Delta value={analysis.session.return_base} />
               </td>
               <td className="num" />
               <td className="num" />
-              <td className="num" title="Portfolio annualised volatility">
+              <td className="num" title="Portfolio annualized volatility">
                 {percent(analysis.risk.annual_volatility, 1)}
               </td>
               <td className="num">{percent(riskSum, 1)}</td>
@@ -357,9 +356,10 @@ function HoldingsLedger({ analysis, onOpen }: { analysis: Analysis; onOpen: (tic
           </tfoot>
         </table>
       </div>
-      {minorUnits.length > 0 && (
-        <p className="panel__foot">
-          {minorUnits.join(' · ')}. Last close is shown as quoted; FX and value use the ISO currency.
+      {(flagged || minorUnits.length > 0) && (
+        <p className="panel__foot faint">
+          {flagged && 'An asterisk marks a holding with data warnings; select it for details. '}
+          {minorUnits.length > 0 && `${minorUnits.join('; ')}. Last close is shown as quoted; FX and value use the ISO currency.`}
         </p>
       )}
     </Panel>
@@ -369,6 +369,7 @@ function HoldingsLedger({ analysis, onOpen }: { analysis: Analysis; onOpen: (tic
 // ---- Drawer --------------------------------------------------------------------------------
 
 const HISTORY_RANGES: HistoryRange[] = ['1y', '5y', '10y', 'max'];
+const FX_METHOD: Record<'direct' | 'inverse' | 'triangulated', string> = { direct: 'direct quote', inverse: 'inverted quote', triangulated: 'cross rate' };
 const historyCache = new Map<string, AssetHistory>();
 
 interface HistoryState {
@@ -427,7 +428,7 @@ function HoldingDrawer({ analysis, holding, onClose }: { analysis: Analysis; hol
             {holding.name}
           </h2>
           <p className="drawer__meta">
-            {holding.exchange} · {holding.currency} · {percent(holding.weight, 1)} of portfolio
+            {holding.exchange}, quoted in {holding.currency}, {percent(holding.weight, 1)} of the portfolio
           </p>
         </div>
         <button type="button" className="icon-button" onClick={onClose} aria-label="Close details">
@@ -444,13 +445,13 @@ function HoldingDrawer({ analysis, holding, onClose }: { analysis: Analysis; hol
           </div>
           {history.status === 'loading' && (
             <div className="chart-placeholder" aria-live="polite">
-              <Spinner /> Loading {rangeLabel(range)} of closes…
+              <Spinner /> Loading daily closes…
             </div>
           )}
           {history.status === 'error' && (
             <Notice
               tone="error"
-              title="Price history is unavailable right now"
+              title="Price history could not be loaded"
               actions={
                 <button type="button" className="button" onClick={() => setAttempt(value => value + 1)}>
                   <RotateCcw size={14} aria-hidden="true" />
@@ -465,10 +466,10 @@ function HoldingDrawer({ analysis, holding, onClose }: { analysis: Analysis; hol
             <>
               <PriceChart history={history.data} />
               <p className="drawer__note faint">
-                Close in {history.data.currency}
-                {history.data.dividends.length > 0 && ` · ${plural(history.data.dividends.length, 'dividend')} marked below the axis`}
-                {history.data.splits.length > 0 && ` · ${plural(history.data.splits.length, 'split')} marked`}
-                {` · ${history.data.source}, fetched ${relative(history.data.fetched_at, now)}`}
+                Daily closes in {history.data.currency}.
+                {history.data.dividends.length > 0 && ` ${plural(history.data.dividends.length, 'dividend')} marked below the axis.`}
+                {history.data.splits.length > 0 && ` ${plural(history.data.splits.length, 'split')} marked.`}
+                {` Source: Yahoo Finance, fetched ${relative(history.data.fetched_at, now)}.`}
               </p>
               {history.data.warnings.length > 0 && (
                 <ul className="warning-list" role="list">
@@ -488,7 +489,7 @@ function HoldingDrawer({ analysis, holding, onClose }: { analysis: Analysis; hol
           <KeyValue
             items={[
               { label: 'Shares', value: quantity(holding.shares) },
-              { label: 'Last close', value: `${quotePrice(holding.price, holding.currency, holding.currency_scale)} · ${fmtDate(holding.price_date)}` },
+              { label: 'Last close', value: `${quotePrice(holding.price, holding.currency, holding.currency_scale)} on ${fmtDate(holding.price_date)}` },
               {
                 label: `Value in ${base}`,
                 value: `${amount(holding.market_value, base)} ${base}`,
@@ -497,16 +498,17 @@ function HoldingDrawer({ analysis, holding, onClose }: { analysis: Analysis; hol
                 label: 'FX rate',
                 value:
                   holding.currency_iso === base
-                    ? 'Not needed (same currency)'
-                    : `1 ${holding.currency_iso} = ${fxRate(holding.fx_rate)} ${base} · ${fmtDate(holding.fx_date)}${fx ? ` · ${fx.method}` : ''}`,
+                    ? `Not needed (quoted in ${base})`
+                    : `1 ${holding.currency_iso} = ${fxRate(holding.fx_rate)} ${base} on ${fmtDate(holding.fx_date)}${fx ? ` (${FX_METHOD[fx.method]})` : ''}`,
               },
               { label: 'Latest session', value: <SessionFacts holding={holding} base={base} /> },
-              { label: '1M · 1Y (local)', value: <><Delta value={holding.period_returns.m1} /> · <Delta value={holding.period_returns.y1} /></> },
+              { label: '1-month return (local)', value: <Delta value={holding.period_returns.m1} /> },
+              { label: '1-year return (local)', value: <Delta value={holding.period_returns.y1} /> },
               { label: 'Annual volatility', value: percent(holding.annual_volatility, 1) },
-              { label: `Beta vs ${analysis.benchmark.ticker}`, value: num(holding.beta, 2) },
+              { label: `Beta to ${analysis.benchmark.ticker}`, value: num(holding.beta, 2) },
               {
                 label: 'Risk share',
-                value: isNum(holding.risk_contribution) ? `${percent(holding.risk_contribution, 1)}${holding.risk_contribution < 0 ? ' (historical offset)' : ''}` : DASH,
+                value: isNum(holding.risk_contribution) ? `${percent(holding.risk_contribution, 1)}${holding.risk_contribution < 0 ? ' (reduced portfolio risk)' : ''}` : DASH,
               },
             ]}
           />
@@ -522,7 +524,7 @@ function HoldingDrawer({ analysis, holding, onClose }: { analysis: Analysis; hol
               { label: 'Exchange time zone', value: holding.exchange_timezone || DASH },
               { label: 'Quote currency', value: quoteUnitLabel(holding.currency, holding.currency_iso, holding.currency_scale) },
               { label: 'Instrument', value: holding.instrument === 'MUTUALFUND' ? 'Mutual fund' : holding.instrument === 'ETF' ? 'ETF' : 'Equity' },
-              { label: 'Sector', value: holding.sector ? canonicalSector(holding.sector) : holding.instrument === 'EQUITY' ? 'Unknown' : 'Fund (no look-through)' },
+              { label: 'Sector', value: holding.sector ? canonicalSector(holding.sector) : holding.instrument === 'EQUITY' ? 'Unknown' : 'Fund (not looked through)' },
               { label: 'Price date', value: fmtDate(holding.price_date) },
               { label: 'Source', value: holding.source },
               { label: 'Fetched', value: fmtTimestamp(holding.fetched_at) },
@@ -541,7 +543,7 @@ function HoldingDrawer({ analysis, holding, onClose }: { analysis: Analysis; hol
 
         <section className="drawer__section" aria-labelledby="drawer-news">
           <h3 id="drawer-news" className="section-title">
-            News
+            News on {holding.ticker}
           </h3>
           {(!news || news.status === 'loading') && (
             <p className="loading-line">
@@ -549,13 +551,13 @@ function HoldingDrawer({ analysis, holding, onClose }: { analysis: Analysis; hol
             </p>
           )}
           {news?.status === 'error' && (
-            <Notice tone="error" title="News is unavailable right now">
+            <Notice tone="error" title="Headlines could not be loaded">
               {news.error}
             </Notice>
           )}
           {news?.status === 'ready' &&
             (items.length ? (
-              <NewsList items={items} now={now} label={`Headlines about ${holding.ticker}`} />
+              <NewsList items={items} now={now} label={`Headlines that mention ${holding.ticker}`} />
             ) : (
               <p className="faint">No recent headlines were found for {holding.ticker}.</p>
             ))}
@@ -580,7 +582,7 @@ function SessionFacts({ holding, base }: { holding: ValuedHolding; base: string 
         <Delta kind="money" value={session.change_base} currency={base} /> {base}
       </span>
       <span className="faint">
-        {shortDate(session.date)} vs {shortDate(session.previous_date)}
+        {shortDate(session.date)} close against {shortDate(session.previous_date)}
       </span>
     </span>
   );

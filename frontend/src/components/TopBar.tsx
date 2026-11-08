@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { Check, ChevronDown, Moon, Plus, Sun } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import { useLens } from '../state/store';
 import { PAGES, hrefFor, navigate, useNow, useOutsideClick, type Page } from '../lib/hooks';
 import { fmtWhen, plural, relative } from '../lib/format';
 import { samePortfolio } from '../lib/portfolio';
 import { Logo } from './Logo';
 import { ConfirmDialog, Tip, cx } from './ui';
-import { TickerTape } from './TickerTape';
 
 export function Header({ page }: { page: Page }) {
   const { pending } = useLens();
@@ -25,30 +24,29 @@ export function Header({ page }: { page: Page }) {
 
   return (
     <header className="masthead">
-      <div className="topbar">
-        <div className="topbar__inner">
-          <a className="topbar__brand" href={hrefFor('briefing')} aria-label="LENS — go to Briefing">
+      <div className="masthead__inner">
+        <div className="topbar">
+          <a className="topbar__brand" href={hrefFor('briefing')} aria-label="LENS, portfolio risk notes. Go to Briefing">
             <Logo />
           </a>
-          <nav className="topnav" aria-label="Primary" ref={nav}>
-            <ul role="list" className="topnav__list">
-              {PAGES.map(item => (
-                <li key={item.id}>
-                  <a className={cx('topnav__link', item.id === page && 'is-active')} href={hrefFor(item.id)} aria-current={item.id === page ? 'page' : undefined}>
-                    {item.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </nav>
           <div className="topbar__tools">
             <PortfolioSwitcher />
             <NewsFreshness />
             <ThemeToggle />
           </div>
         </div>
+        <nav className="topnav" aria-label="Primary" ref={nav}>
+          <ul role="list" className="topnav__list">
+            {PAGES.map(item => (
+              <li key={item.id}>
+                <a className={cx('topnav__link', item.id === page && 'is-active')} href={hrefFor(item.id)} aria-current={item.id === page ? 'page' : undefined}>
+                  {item.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
       </div>
-      <TickerTape />
       {pending && <div className="progress-line" role="progressbar" aria-label="Analysis in progress" aria-valuetext="Analysis in progress" />}
     </header>
   );
@@ -81,7 +79,7 @@ function PortfolioSwitcher() {
         .map(portfolio => ({
           key: `saved:${portfolio.id}`,
           label: portfolio.name,
-          detail: `${plural(portfolio.holdings.length, 'holding')} · ${portfolio.base_currency} · saved ${relative(portfolio.updated_at)}`,
+          detail: `${plural(portfolio.holdings.length, 'holding')} in ${portfolio.base_currency}, saved ${relative(portfolio.updated_at)}`,
           checked: draft.source.kind === 'saved' && draft.source.id === portfolio.id,
           run: () => openSaved(portfolio, true),
           role: 'menuitemradio' as const,
@@ -93,7 +91,7 @@ function PortfolioSwitcher() {
       examples.map((example, index) => ({
         key: `example:${index}`,
         label: example.name,
-        detail: `Example — not your holdings · ${plural(example.holdings.length, 'holding')} · ${example.base_currency}`,
+        detail: `Hypothetical, ${plural(example.holdings.length, 'holding')} in ${example.base_currency}`,
         checked: draft.source.kind === 'example' && draft.source.index === index,
         run: () => openExample(index, true),
         role: 'menuitemradio' as const,
@@ -183,7 +181,7 @@ function PortfolioSwitcher() {
       onClick={() => choose(entry)}
     >
       <span className="menu__check" aria-hidden="true">
-        {entry.checked ? <Check size={14} /> : entry.key === 'new' ? <Plus size={14} /> : null}
+        {entry.checked ? <Check size={14} /> : null}
       </span>
       <span className="menu__text">
         <span className="menu__label">{entry.label}</span>
@@ -200,12 +198,12 @@ function PortfolioSwitcher() {
         className="switcher__button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Portfolio: ${name}, base currency ${draft.portfolio.base_currency}${sourceNote ? `, ${sourceNote.toLowerCase()}` : ''}${unapplied ? ', not analyzed yet' : ''}. Switch portfolio`}
+        aria-label={`Portfolio: ${name}, base currency ${draft.portfolio.base_currency}${sourceNote ? `, ${sourceNote.toLowerCase()}` : ''}${unapplied ? ', not yet analyzed' : ''}. Switch portfolio`}
         onClick={() => setOpen(value => !value)}
       >
-        {unapplied && <span className="switcher__pending" aria-hidden="true" title="This draft has not been analyzed yet" />}
         <span className="switcher__name">{name}</span>
-        {sourceNote && <span className="switcher__tag">{sourceNote}</span>}
+        {sourceNote && <span className="switcher__tag">{sourceNote.toLowerCase()}</span>}
+        {unapplied && <span className="switcher__pending" aria-hidden="true" title="This draft has not been analyzed yet" />}
         <span className="switcher__ccy">{draft.portfolio.base_currency}</span>
         <ChevronDown size={14} aria-hidden="true" className="switcher__chevron" />
       </button>
@@ -217,9 +215,9 @@ function PortfolioSwitcher() {
             </p>
             {savedEntries.length ? savedEntries.map(renderEntry) : <p className="menu__empty">{savedError ? `Saved portfolios could not be loaded: ${savedError}` : 'No saved portfolios yet.'}</p>}
           </div>
-          <div role="group" aria-label="Examples, not your holdings" className="menu__group">
+          <div role="group" aria-label="Examples with hypothetical holdings" className="menu__group">
             <p className="menu__heading" aria-hidden="true">
-              Examples — not your holdings
+              Examples with hypothetical holdings
             </p>
             {exampleEntries.length ? exampleEntries.map(renderEntry) : <p className="menu__empty">{examplesError ? `Examples could not be loaded: ${examplesError}` : 'No examples available.'}</p>}
           </div>
@@ -228,7 +226,7 @@ function PortfolioSwitcher() {
       )}
       <ConfirmDialog
         open={confirm !== null}
-        title="Discard unsaved changes?"
+        title="Discard unsaved changes"
         confirmLabel="Discard and open"
         danger
         onCancel={() => setConfirm(null)}
@@ -260,26 +258,31 @@ function NewsFreshness() {
   const refreshing = board.refreshing || Boolean(status?.refreshing ?? data?.refreshing);
 
   let tone: 'fresh' | 'stale' | 'error' | 'none' | 'busy';
+  let state: string | null = null;
   let text: string;
   if (board.loading && !data) {
     tone = 'none';
-    text = 'Loading news status…';
+    text = 'Loading the sector news status.';
   } else if (board.loadError && !data) {
     tone = 'error';
-    text = `News is unavailable right now: ${board.loadError}`;
+    state = 'unavailable';
+    text = `Sector news is unavailable. ${board.loadError}`;
   } else if (refreshing) {
     tone = 'busy';
-    text = 'Refreshing sector news…';
+    state = 'updating';
+    text = 'Refreshing sector news. This can take a minute.';
   } else if (!refreshedAt) {
     tone = lastError ? 'error' : 'none';
-    text = lastError ? `News has not loaded yet: ${lastError}` : 'News has not been collected yet.';
+    state = lastError ? 'failed' : null;
+    text = lastError ? `Sector news has not loaded. ${lastError}` : 'Sector news has not been collected yet.';
   } else {
     const age = now - (Date.parse(refreshedAt) || now);
     const limit = (config?.news_refresh_hours ?? 6) * 3_600_000 * 1.5;
     tone = lastError ? 'error' : age > limit ? 'stale' : 'fresh';
-    text = `News updated ${relative(refreshedAt, now)} (${fmtWhen(refreshedAt)})`;
-    if (nextAt) text += ` · next refresh ${fmtWhen(nextAt)}`;
-    if (lastError) text += ` · last refresh failed: ${lastError}`;
+    state = lastError ? 'incomplete' : age > limit ? 'out of date' : null;
+    text = `Sector news updated ${relative(refreshedAt, now)} (${fmtWhen(refreshedAt)}).`;
+    if (nextAt) text += ` Next automatic refresh ${fmtWhen(nextAt)}.`;
+    if (lastError) text += ` ${lastError}`;
   }
 
   return (
@@ -289,14 +292,14 @@ function NewsFreshness() {
           type="button"
           className={cx('freshness', `freshness--${tone}`)}
           aria-describedby={id}
-          aria-label="News freshness. Opens the sector desk."
+          aria-label={`Sector news${state ? `, ${state}` : ''}. Go to Sector news on the Briefing page`}
           onClick={() => {
             navigate('briefing');
-            window.setTimeout(() => document.getElementById('sector-desk')?.scrollIntoView({ block: 'start' }), 80);
+            window.setTimeout(() => document.getElementById('sector-news')?.scrollIntoView({ block: 'start' }), 80);
           }}
         >
-          <span className="freshness__dot" aria-hidden="true" />
           <span className="freshness__label">News</span>
+          {state && <span className="freshness__state">{state}</span>}
         </button>
       )}
     </Tip>
@@ -307,12 +310,8 @@ function ThemeToggle() {
   const { theme, toggleTheme } = useLens();
   const next = theme === 'dark' ? 'light' : 'dark';
   return (
-    <Tip text={`Switch to ${next} theme`} align="end" placement="below">
-      {id => (
-        <button type="button" className="icon-button" onClick={toggleTheme} aria-label={`Switch to ${next} theme`} aria-describedby={id}>
-          {theme === 'dark' ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
-        </button>
-      )}
-    </Tip>
+    <button type="button" className="text-control" onClick={toggleTheme} aria-label={`Switch to the ${next} theme`} title={`Switch to the ${next} theme`}>
+      {next === 'dark' ? 'Dark' : 'Light'}
+    </button>
   );
 }

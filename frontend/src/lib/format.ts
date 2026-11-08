@@ -1,8 +1,10 @@
 import type { Frequency, HistoryRange } from '../types';
 
-export const DASH = '—';
+/** Placeholder for a figure that is not available. */
+export const DASH = 'n/a';
 const MINUS = '\u2212';
-const LOCALE: string | undefined = undefined;
+/** Figures, dates and times are written in US English: "1,234.56", "Saturday, November 7, 2026", "8:19 PM". */
+const LOCALE = 'en-US';
 
 export const isNum = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
@@ -132,6 +134,17 @@ export function signedNum(value: number | null | undefined, digits = 2): string 
   return minus(nf({ minimumFractionDigits: digits, maximumFractionDigits: digits, signDisplay: 'exceptZero' }).format(value));
 }
 
+/** Signed percentage with a plus sign or a true minus, e.g. "+0.45%" or "\u22120.36%". */
+export function signedPercent(value: number | null | undefined, digits = 2): string {
+  return percent(value, digits, true);
+}
+
+/** Direction of a signed figure at the displayed precision, used to color it. */
+export function signOf(value: number | null | undefined, digits = 2, percentScale = false): 'up' | 'down' | 'flat' {
+  if (!isNum(value) || roundsToZero(value, digits, percentScale)) return 'flat';
+  return value > 0 ? 'up' : 'down';
+}
+
 /** True when a value rounds to zero at the displayed precision. */
 export function roundsToZero(value: number, digits: number, percentScale = false): boolean {
   const scaled = percentScale ? value * 100 : value;
@@ -184,23 +197,44 @@ export function dateValue(value: string): number {
 }
 
 type DateStyle = 'day' | 'medium' | 'long' | 'month';
-const DATE_STYLES: Record<DateStyle, Intl.DateTimeFormatOptions> = {
-  day: { month: 'short', day: 'numeric' },
-  medium: { month: 'short', day: 'numeric', year: 'numeric' },
-  long: { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' },
-  month: { month: 'short', year: 'numeric' },
-};
 
-export function fmtDate(value: string | Date | null | undefined, style: DateStyle = 'medium'): string {
+// Written out rather than taken from Intl so the output does not vary with the browser's ICU data
+// (for example a four-letter abbreviation for September, or a narrow no-break space before PM).
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function toDate(value: string | Date | null | undefined): Date | null {
   const parsed = value instanceof Date ? value : parseDate(value);
-  if (!parsed) return typeof value === 'string' && value ? value : DASH;
-  return df(DATE_STYLES[style]).format(parsed);
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
 }
 
+/** "Oct 27", "Oct 27, 2026", "Tuesday, October 27, 2026" or "Oct 2026". */
+export function fmtDate(value: string | Date | null | undefined, style: DateStyle = 'medium'): string {
+  const parsed = toDate(value);
+  if (!parsed) return typeof value === 'string' && value ? value : DASH;
+  const month = MONTHS_SHORT[parsed.getMonth()];
+  const day = parsed.getDate();
+  const year = parsed.getFullYear();
+  switch (style) {
+    case 'day':
+      return `${month} ${day}`;
+    case 'month':
+      return `${month} ${year}`;
+    case 'long':
+      return `${WEEKDAYS[parsed.getDay()]}, ${MONTHS_LONG[parsed.getMonth()]} ${day}, ${year}`;
+    default:
+      return `${month} ${day}, ${year}`;
+  }
+}
+
+/** 12-hour clock time, e.g. "8:19 PM" (a no-break space keeps "PM" with the time). */
 export function fmtTime(value: string | Date | null | undefined): string {
-  const parsed = value instanceof Date ? value : parseDate(value);
+  const parsed = toDate(value);
   if (!parsed) return DASH;
-  return df({ hour: 'numeric', minute: '2-digit' }).format(parsed);
+  const hours = parsed.getHours();
+  const minutes = String(parsed.getMinutes()).padStart(2, '0');
+  return `${hours % 12 || 12}:${minutes}\u00a0${hours < 12 ? 'AM' : 'PM'}`;
 }
 
 /** "Oct 27" within the current year, otherwise "Oct 27, 2025". */
@@ -210,7 +244,7 @@ export function shortDate(value: string | null | undefined, now: Date = new Date
   return fmtDate(parsed, parsed.getFullYear() === now.getFullYear() ? 'day' : 'medium');
 }
 
-/** "Mar 2 – Oct 27" in the current year, "Mar 2 – Oct 27, 2024" within one year, otherwise both years. */
+/** "Mar 2 – Oct 27" in the current year, "Mar 2 – Oct 27, 2024" within one year, otherwise "Nov 6, 2025 – Nov 6, 2026". */
 export function dateRange(start: string | null | undefined, end: string | null | undefined, now: Date = new Date()): string {
   const from = parseDate(start);
   const to = parseDate(end);
@@ -224,24 +258,27 @@ export function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-/** Closes a sentence unless it already ends with punctuation, e.g. a locale time such as "1:35 p.m.". */
+/** Closes a sentence unless it already ends with punctuation. */
 export function sentence(text: string): string {
   return /[.!?…]$/.test(text) ? text : `${text}.`;
 }
 
-/** Time only for today, otherwise date and time. */
+/** Time only for today ("2:05 PM"), otherwise date and time ("Oct 27, 2:05 PM"). */
 export function fmtWhen(value: string | null | undefined, now: Date = new Date()): string {
   const parsed = parseDate(value);
   if (!parsed) return DASH;
   if (sameDay(parsed, now)) return fmtTime(parsed);
-  if (parsed.getFullYear() === now.getFullYear()) return df({ month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(parsed);
-  return df({ month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(parsed);
+  return `${fmtDate(parsed, parsed.getFullYear() === now.getFullYear() ? 'day' : 'medium')}, ${fmtTime(parsed)}`;
 }
 
+/** Date, time and the local time-zone abbreviation, e.g. "Oct 27, 2026, 2:05 PM EDT". */
 export function fmtTimestamp(value: string | null | undefined): string {
   const parsed = parseDate(value);
   if (!parsed) return DASH;
-  return df({ month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(parsed);
+  const zone = df({ timeZoneName: 'short' })
+    .formatToParts(parsed)
+    .find(part => part.type === 'timeZoneName')?.value;
+  return `${fmtDate(parsed, 'medium')}, ${fmtTime(parsed)}${zone ? ` ${zone}` : ''}`;
 }
 
 export function relative(value: string | null | undefined, now: number = Date.now()): string {
@@ -263,7 +300,7 @@ export function relative(value: string | null | undefined, now: number = Date.no
 
 /** Axis label for a month, e.g. "Oct ’26". */
 export function monthTick(date: Date, withYear: boolean): string {
-  const month = df({ month: 'short' }).format(date);
+  const month = MONTHS_SHORT[date.getMonth()];
   return withYear ? `${month} ’${String(date.getFullYear()).slice(2)}` : month;
 }
 

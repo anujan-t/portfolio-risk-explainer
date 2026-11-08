@@ -8,7 +8,7 @@ import { safeId } from './Sparkline';
 type SeriesPoint = Analysis['series'][number];
 
 /**
- * Portfolio drawdown from its running peak (always ≤ 0), with the trough marked.
+ * Portfolio drawdown from its running peak (always ≤ 0) in oxblood, with the trough marked.
  * With `fill`, the plot grows to the height its panel offers (between 160/190 and 440 px).
  */
 export function DrawdownChart({ series, height: fixedHeight, fill = false }: { series: SeriesPoint[]; height?: number; fill?: boolean }) {
@@ -19,7 +19,7 @@ export function DrawdownChart({ series, height: fixedHeight, fill = false }: { s
   const width = size.width;
   const minHeight = width > 0 && width < 560 ? 160 : 190;
   const height = fixedHeight ?? (fill ? Math.min(440, Math.max(minHeight, size.height)) : minHeight);
-  const margin = { top: 10, right: width < 560 ? 40 : 52, bottom: 24, left: 2 };
+  const margin = { top: 10, right: 8, bottom: 24, left: 42 };
   const plotRight = Math.max(margin.left + 10, width - margin.right);
   const plotBottom = height - margin.bottom;
 
@@ -85,8 +85,8 @@ export function DrawdownChart({ series, height: fixedHeight, fill = false }: { s
       <div className="chart-readout">
         <span className="chart-readout__date">{fmtDate(series[active].date)}</span>
         <span className="chart-readout__item">
-          <span className="legend-swatch legend-swatch--portfolio" aria-hidden="true" />
-          <span className="chart-readout__name">From peak</span>
+          <span className="legend-swatch legend-swatch--drawdown" aria-hidden="true" />
+          <span className="chart-readout__name">Below previous peak</span>
           <span className="chart-readout__value">{percent(model?.values[active] ?? series[active].drawdown, 1)}</span>
         </span>
       </div>
@@ -111,12 +111,6 @@ export function DrawdownChart({ series, height: fixedHeight, fill = false }: { s
               The deepest drawdown was {percent(model.values[model.troughIndex], 1)} on {fmtDate(trough.date)}. The latest value is{' '}
               {percent(model.values[series.length - 1], 1)}.
             </desc>
-            <defs>
-              <linearGradient id={`${id}-fill`} x1="0" x2="0" y1="1" y2="0">
-                <stop offset="0%" className="chart__fill-stop chart__fill-stop--top" />
-                <stop offset="100%" className="chart__fill-stop chart__fill-stop--bottom" />
-              </linearGradient>
-            </defs>
             <g className="chart__grid">
               {model.axis.ticks.map(tick => (
                 <line key={tick} x1={margin.left} x2={plotRight} y1={Math.round(model.y(tick)) + 0.5} y2={Math.round(model.y(tick)) + 0.5} className={tick === 0 ? 'is-base' : undefined} />
@@ -124,7 +118,7 @@ export function DrawdownChart({ series, height: fixedHeight, fill = false }: { s
             </g>
             <g className="chart__axis" fontSize={AXIS_FONT}>
               {model.axis.ticks.map(tick => (
-                <text key={tick} x={width - 2} y={model.y(tick) + 4} textAnchor="end">
+                <text key={tick} x={margin.left - 8} y={model.y(tick) + 4} textAnchor="end">
                   {percent(tick, 0)}
                 </text>
               ))}
@@ -134,8 +128,8 @@ export function DrawdownChart({ series, height: fixedHeight, fill = false }: { s
                 </text>
               ))}
             </g>
-            <path d={model.area} fill={`url(#${id}-fill)`} />
-            <path d={model.line} className="chart__line chart__line--portfolio" />
+            <path d={model.area} className="chart__area chart__area--drawdown" />
+            <path d={model.line} className="chart__line chart__line--drawdown" />
             <g className="chart__marker">
               <line x1={troughX} x2={troughX} y1={model.y(0)} y2={model.y(model.values[model.troughIndex])} />
               <circle cx={troughX} cy={model.y(model.values[model.troughIndex])} r={3} />
@@ -145,13 +139,13 @@ export function DrawdownChart({ series, height: fixedHeight, fill = false }: { s
                 textAnchor={labelLeft ? 'end' : 'start'}
                 fontSize={AXIS_FONT}
               >
-                {percent(model.values[model.troughIndex], 1)} · {fmtDate(trough.date, 'medium')}
+                {percent(model.values[model.troughIndex], 1)} on {fmtDate(trough.date, 'medium')}
               </text>
             </g>
             {cursor !== null && (
               <g className="chart__cursor">
                 <line x1={model.xs[cursor]} x2={model.xs[cursor]} y1={margin.top} y2={plotBottom} />
-                <circle cx={model.xs[cursor]} cy={model.y(model.values[cursor])} r={3.5} className="chart__dot chart__dot--portfolio" />
+                <circle cx={model.xs[cursor]} cy={model.y(model.values[cursor])} r={3.5} className="chart__dot chart__dot--drawdown" />
               </g>
             )}
             <rect

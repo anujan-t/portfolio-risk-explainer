@@ -119,7 +119,7 @@ export function TickerSearch({
   if (disabled && disabledReason) status = disabledReason;
   else if (query.trim()) {
     if (state.status === 'loading' || debounced !== query.trim()) status = 'Searching…';
-    else if (state.status === 'error') status = `Search is unavailable right now: ${state.error}`;
+    else if (state.status === 'error') status = `Search failed. ${state.error}`;
     else if (state.status === 'ready' && !state.results.length)
       status = validTicker(typed) ? `No listed matches for “${query.trim()}”. You can still look up ${typed} exactly as typed.` : `No matches for “${query.trim()}”.`;
     else if (state.status === 'ready') status = `${state.results.length} ${state.results.length === 1 ? 'match' : 'matches'}. Use the arrow keys to choose.`;
@@ -183,13 +183,13 @@ export function TickerSearch({
                 <span className="search__detail">
                   <span className="search__name">{option.result.name}</span>
                   <span className="search__meta">
-                    {[option.result.exchange, option.result.instrument, option.result.sector].filter(Boolean).join(' · ')}
+                    {[option.result.exchange, option.result.instrument, option.result.sector].filter(Boolean).join(', ')}
                   </span>
                 </span>
               ) : (
                 <span className="search__detail">
                   <span className="search__name">Look up “{option.ticker}” exactly as typed</span>
-                  <span className="search__meta">Checked against market data before it is added</span>
+                  <span className="search__meta">LENS checks it against market data before adding it</span>
                 </span>
               )}
             </li>

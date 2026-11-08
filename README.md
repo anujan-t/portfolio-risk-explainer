@@ -1,40 +1,44 @@
-# LENS — Portfolio Risk Explainer
+# LENS: portfolio risk explainer
 
-A private, local portfolio-intelligence app. Build a portfolio by ticker search
-or from a screenshot of your brokerage holdings, then see its value, risk,
-concentration and historical behaviour in your own currency — alongside daily
-sector and holdings news. Holdings never leave your computer.
+LENS is a portfolio risk tool that runs on your own computer. You enter holdings
+by ticker search or from a screenshot of a brokerage holdings page. LENS then
+reports the portfolio's value, risk, concentration and price history in your
+base currency, with sector news and news on the securities you hold. Holdings
+stay on your computer.
 
-**Stack:** Python, pandas, NumPy, FastAPI, RapidOCR (local), React, TypeScript, Vite.
+**Stack:** Python, pandas, NumPy, FastAPI, RapidOCR (local), React, TypeScript,
+Vite. The fonts (Source Serif 4, Source Sans 3 and IBM Plex Mono) are bundled
+with the frontend, so nothing is loaded from a font CDN.
 
-## What it does
+## Features
 
-- **Global holdings.** Stocks, ETFs and mutual funds from exchanges covered by
-  Yahoo Finance (for example NYSE, Nasdaq, TSX, LSE, XETRA, Euronext, Tokyo,
-  Hong Kong, NSE, ASX, Johannesburg, Tel Aviv). Up to 25 positions.
-- **Thirteen reporting currencies** (USD, CAD, EUR, GBP, JPY, AUD, CHF, HKD,
-  SGD, INR, CNY, SEK, NZD). Minor-unit quotes such as GBp, ZAc and ILA are
-  converted to whole currency units before FX conversion.
-- **Screenshot import.** Paste or drop a screenshot of your holdings. Text is
-  read on your computer by an offline OCR model; proposed tickers and share
-  quantities are checked against market data and shown for review. Nothing is
-  added until you confirm each row.
-- **Daily news.** Sector briefings for all 11 GICS sectors (US Select Sector
-  and iShares Global sector ETFs as proxies, with 1-day, 1-week, 1-month and
-  year-to-date moves) refresh automatically every few hours, plus news for the
-  securities you hold.
-- **Risk analysis.** Annualised volatility, beta, correlation, maximum
-  drawdown, historical 95% VaR and expected shortfall, covariance-based risk
-  contribution, correlation matrix and concentration (HHI, effective positions,
-  sector, currency and exchange exposure), with plain-English explanations.
+- **Global holdings.** Stocks, ETFs and mutual funds listed on exchanges that
+  Yahoo Finance covers, for example NYSE, Nasdaq, TSX, LSE, XETRA, Euronext,
+  Tokyo, Hong Kong, NSE, ASX, Johannesburg and Tel Aviv. Up to 25 positions.
+- **Thirteen base currencies:** USD, CAD, EUR, GBP, JPY, AUD, CHF, HKD, SGD,
+  INR, CNY, SEK and NZD. Prices quoted in minor units, such as GBp, ZAc and ILA,
+  are converted to whole currency units before currency conversion.
+- **Screenshot import.** Paste or drop a screenshot of your holdings. An offline
+  OCR model reads the text on your computer. LENS checks the proposed tickers
+  and share quantities against market data and lists them for review. Nothing
+  is added until you confirm each row.
+- **Daily news.** Performance and headlines for all 11 GICS sectors, using US
+  Select Sector and iShares Global sector ETFs as proxies, with 1-day, 1-week,
+  1-month and year-to-date moves. Sector data refreshes automatically every few
+  hours. LENS also collects news on the securities you hold.
+- **Risk analysis.** Annualized volatility, beta, correlation, maximum drawdown,
+  historical 95% value at risk and expected shortfall, covariance-based risk
+  contribution, a correlation matrix and concentration measures (HHI, effective
+  number of positions, and sector, currency and exchange exposure). Each figure
+  comes with a short written note.
 - **History** from six months to the full daily record of each listing, with
   dividends and splits.
-- **What-if scenarios** compared on identical dates, and a private portfolio
-  library with revision checks.
+- **What-if scenarios**, compared with the current portfolio on identical dates,
+  and a library of saved portfolios with revision checks.
 
 ## Run locally
 
-Python 3.12+ and Node.js 22 LTS are recommended.
+Python 3.12 or newer and Node.js 22 LTS are recommended.
 
 ```powershell
 python -m venv .venv
@@ -46,30 +50,32 @@ Set-Location ..
 .\Start.ps1
 ```
 
-Open **http://127.0.0.1:8766/**. API reference: `/docs`. See `RUNNING.txt` for
-options, methodology and limitations.
+Open **http://127.0.0.1:8766/**. The API reference is at `/docs`. `RUNNING.txt`
+covers options, methods and limitations.
 
-## Data, methods and limits
+## Data, methods and limitations
 
-- **Market data and news** come from Yahoo Finance's public chart/search
-  endpoints. They are unofficial, can be delayed, change or be rate-limited, and
-  are not a licensed market feed. Failures are reported; nothing is filled in
-  with synthetic data.
-- **Valuation** uses each security's latest *completed* close and the latest
-  completed FX close — not real-time executable prices.
-- **FX** uses the provider's direct pair, the inverted reverse pair, or a cross
-  through USD; each pair's quote currency is verified before use, and the method
-  is shown for every currency.
+- **Market data and news** come from Yahoo Finance's public chart and search
+  endpoints. These endpoints are unofficial and unlicensed; they can be delayed,
+  change without notice or be rate-limited. LENS reports failures and never
+  fills gaps with synthetic data.
+- **Valuations** use each security's latest *completed* close and the latest
+  completed exchange-rate close. They are neither real-time nor executable
+  prices.
+- **Exchange rates** come from the provider's direct pair, the inverted reverse
+  pair or a cross rate through USD. LENS verifies each pair's quote currency
+  before use and shows the method for every currency.
 - **Returns** come from dividend- and split-adjusted closes. Historical prices
-  are converted with same-date FX and never forward-filled. When holdings trade
-  in time zones three or more hours apart, *Auto* frequency uses weekly returns
-  to limit distortions from non-synchronous closing prices.
-- The historical path applies **today's weights** to past returns; it is not
-  your account performance. Risk figures are historical estimates, not forecasts.
-- **News** is shown with publisher and timestamp and links to the original
-  story. There are no sentiment or "impact" scores.
-- **Explanations** are rule-based summaries of the computed metrics. No portfolio
-  data is sent to an AI service.
+  are converted at same-date exchange rates and are never forward-filled. When
+  holdings trade in time zones three or more hours apart, *Auto* frequency uses
+  weekly returns to limit distortions from different closing times.
+- The historical path applies **today's weights** to past returns, so it differs
+  from your account's actual performance. Risk figures are historical estimates
+  and do not forecast future results.
+- **News** is shown with its publisher and time and links to the original
+  story. LENS does not score sentiment or likely price impact.
+- **Risk notes** are produced by fixed rules from the computed figures. No
+  portfolio data is sent to an AI service.
 - Funds are not looked through to their underlying holdings.
 
 ## Privacy
@@ -77,9 +83,10 @@ options, methodology and limitations.
 Portfolios and cached public market data are stored in
 `%LOCALAPPDATA%\PortfolioRiskExplainer` (override with `PORTFOLIO_DATA_DIR`).
 Only ticker symbols, company names and date ranges are sent to the data
-provider — never share quantities, values or screenshots. Uploaded screenshots
-are processed in memory and discarded after the request. The server listens on
-`127.0.0.1` only and is not designed for public hosting.
+provider. Share quantities, values and screenshots are never sent. Uploaded
+screenshots are processed in memory and discarded after the request. The server
+listens on `127.0.0.1` only and is meant for use on one computer; do not expose
+it on a public network.
 
 ## Development
 
@@ -88,10 +95,10 @@ are processed in memory and discarded after the request. The server listens on
 Set-Location frontend; npm run build
 ```
 
-The original metrics command remains available for the CSV fixtures:
+The original metrics command still works with the CSV fixtures:
 
 ```powershell
 .\.venv\Scripts\python.exe risk.py data\sample_holdings.csv --prices data\sample_prices.csv
 ```
 
-Educational portfolio research only — not investment advice.
+For research and education. Not investment advice.

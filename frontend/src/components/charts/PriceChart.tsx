@@ -13,7 +13,7 @@ function stepDigits(ticks: number[]): number {
   return 4;
 }
 
-/** Close price history with dividend ticks and labelled split markers. */
+/** Close price history with dividend ticks and labeled split markers. */
 export function PriceChart({ history }: { history: AssetHistory }) {
   const [wrapRef, size] = useElementSize<HTMLDivElement>();
   const [cursor, setCursor] = useState<number | null>(null);
@@ -21,7 +21,7 @@ export function PriceChart({ history }: { history: AssetHistory }) {
   const id = safeId(useId());
   const width = size.width;
   const height = 240;
-  const margin = { top: 22, right: 58, bottom: 34, left: 2 };
+  const margin = { top: 22, right: 8, bottom: 34, left: 56 };
   const plotRight = Math.max(margin.left + 10, width - margin.right);
   const plotBottom = height - margin.bottom;
   const points = history.points;
@@ -112,7 +112,8 @@ export function PriceChart({ history }: { history: AssetHistory }) {
             <title id={`${id}-t`}>Close prices for {history.ticker} in {unit}. Use the left and right arrow keys to read values.</title>
             <desc id={`${id}-d`}>
               From {quotePrice(first.close, unit, scale)} on {fmtDate(first.date)} to {quotePrice(latest.close, unit, scale)} on {fmtDate(latest.date)}.{' '}
-              {model.dividends.length} dividends and {model.splits.length} splits in this range.
+              {model.dividends.length} {model.dividends.length === 1 ? 'dividend' : 'dividends'} and {model.splits.length}{' '}
+              {model.splits.length === 1 ? 'split' : 'splits'} in this range.
             </desc>
             <g className="chart__grid">
               {model.axis.ticks.map(tick => (
@@ -121,7 +122,7 @@ export function PriceChart({ history }: { history: AssetHistory }) {
             </g>
             <g className="chart__axis" fontSize={AXIS_FONT}>
               {model.axis.ticks.map(tick => (
-                <text key={tick} x={width - 2} y={model.y(tick) + 4} textAnchor="end">
+                <text key={tick} x={margin.left - 8} y={model.y(tick) + 4} textAnchor="end">
                   {num(tick, model.digits)}
                 </text>
               ))}

@@ -9,8 +9,8 @@ import unittest
 
 from backend.market import MarketUnavailable, UnsupportedAsset
 from backend.news import (
-    FRESH_REASON, RUNNING_REASON, SOURCE, NewsService, balanced, collapse, company_match, iso, month_before, normalise_item, related_tickers,
-    sector_move,
+    FRESH_REASON, RUNNING_REASON, SOURCE, NewsService, balanced, collapse, company_match, iso, month_before, normalise_item, readable_time,
+    related_tickers, sector_move,
 )
 from backend.sectors import SECTORS
 from backend.storage import Store
@@ -285,6 +285,13 @@ class HelperTests(unittest.TestCase):
             with self.subTest(day=day):
                 self.assertEqual(month_before(day), expected)
 
+    def test_readable_time_uses_a_us_date_and_a_12_hour_clock(self):
+        for value, expected in (("2026-10-28T15:00:00Z", "3:00 PM UTC on Oct 28, 2026"), ("2026-09-05T00:07:00Z", "12:07 AM UTC on Sep 5, 2026"),
+                                ("2026-01-01T12:30:00+00:00", "12:30 PM UTC on Jan 1, 2026"), ("2026-03-02T09:05:00-05:00", "2:05 PM UTC on Mar 2, 2026"),
+                                ("not a time", "not a time")):
+            with self.subTest(value=value):
+                self.assertEqual(readable_time(value), expected)
+
     def test_company_match_builds_a_query_and_a_title_test(self):
         cases = (
             ("Toyota Motor Corporation", "7203.T", "Toyota Motor", ["Toyota lifts forecast", "Why TOYOTA is cutting output", "Toyota Motor shares jump"],
@@ -453,8 +460,8 @@ class RefreshTests(ServiceTestCase):
         result = service.refresh_sectors()
         self.assertEqual((result["status"], result["sectors_refreshed"], result["sectors_failed"]), ("refreshed", 9, 2))
         self.assertEqual(result["errors"], {"energy": ["XLE prices: Yahoo Finance is unavailable (HTTP 503)."], "financials": ["IXG news: timed out"]})
-        self.assertEqual(result["last_error"], "2 of 11 sectors could not be refreshed: Energy (XLE prices: Yahoo Finance is unavailable (HTTP 503).); "
-                                               "Financials (IXG news: timed out)")
+        self.assertEqual(result["last_error"], "2 of 11 sectors could not be refreshed: Energy and Financials. "
+                                               "Yahoo Finance is unavailable (HTTP 503). Timed out.")
         self.assertEqual(result["refreshed_at"], "2026-10-28T15:00:00Z")
         self.assertEqual(len(self.market.calls), 44)
         board = service.sector_board()
@@ -477,7 +484,7 @@ class RefreshTests(ServiceTestCase):
         self.assertEqual(self.sector(board, "energy")["global"]["as_of"], "2026-10-28")
         self.assertEqual(self.sector(board, "utilities")["us"]["as_of"], "2026-10-28")
         self.assertEqual(before["as_of"], "2026-10-27")
-        self.assertEqual(board["last_error"], "1 of 11 sectors could not be refreshed: Energy (XLE prices: boom)")
+        self.assertEqual(board["last_error"], "1 of 11 sectors could not be refreshed: Energy. Boom.")
 
     def test_total_failure_is_reported_and_not_marked_fresh(self):
         self.fail_everything()
@@ -486,8 +493,8 @@ class RefreshTests(ServiceTestCase):
         self.assertEqual((result["status"], result["sectors_refreshed"], result["sectors_failed"]), ("failed", 0, 11))
         self.assertIsNone(result["refreshed_at"])
         self.assertIsNone(result["next_refresh_at"])
-        self.assertEqual(result["last_error"], "11 of 11 sectors could not be refreshed: Communication Services (XLC prices: offline); "
-                                               "Consumer Discretionary (XLY prices: offline); Consumer Staples (XLP prices: offline); and 8 more")
+        self.assertEqual(result["last_error"], "11 of 11 sectors could not be refreshed: Communication Services, "
+                                               "Consumer Discretionary, Consumer Staples and 8 more. Offline.")
         board = service.sector_board()
         self.assertIsNone(board["refreshed_at"])
         self.assertEqual(board["last_error"], result["last_error"])
@@ -519,7 +526,25 @@ class RefreshTests(ServiceTestCase):
         with self.assertLogs("backend.news", "WARNING"):
             result = self.service().refresh_sectors()
         self.assertEqual((result["status"], result["sectors_failed"]), ("refreshed", 1))
-        self.assertEqual(result["errors"]["information_technology"], ["XLK prices: unexpected KeyError: 'boom'"])
+        self.assertEqual(result["errors"]["information_technology"],
+                         ["XLK prices: An unexpected error occurred; the details are in the LENS server log."])
+        self.assertNotIn("KeyError", result["last_error"])
+
+    def test_connection_errors_are_reported_without_local_details(self):
+        error = OSError("Could not find a suitable TLS CA certificate bundle, invalid path: C:\\Users\\someone\\cacert.pem")
+        for proxy in PROXIES:
+            self.market.charts[proxy] = error
+            self.market.news[proxy] = error
+        with self.assertLogs("backend.news", "WARNING") as logged:
+            result = self.service().refresh_sectors()
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["last_error"], "11 of 11 sectors could not be refreshed: Communication Services, Consumer Discretionary, "
+                                               "Consumer Staples and 8 more. LENS could not reach Yahoo Finance. Check the internet "
+                                               "connection and try again.")
+        shown = " ".join([result["last_error"], *(problem for problems in result["errors"].values() for problem in problems)])
+        for detail in ("OSError", "C:\\", "certificate", "cacert.pem"):
+            self.assertNotIn(detail, shown)
+        self.assertTrue(any("cacert.pem" in line for line in logged.output))  # the details are kept for the log
 
     def test_malformed_provider_payloads_are_reported(self):
         self.market.news["XLY"] = {"oops": True}
@@ -610,8 +635,9 @@ class RefreshTests(ServiceTestCase):
             result = service.refresh_sectors()
         self.assertEqual(result["status"], "failed")
         self.assertFalse(result["refreshing"])
-        self.assertIn("ZeroDivisionError", result["last_error"])
-        self.assertIn("ZeroDivisionError", service.status()["last_error"])
+        self.assertIn("unexpected error", result["last_error"])
+        self.assertNotIn("ZeroDivisionError", result["last_error"])
+        self.assertEqual(service.status()["last_error"], result["last_error"])
 
     def test_stories_older_than_the_retention_window_are_purged(self):
         service = self.service()
@@ -808,7 +834,7 @@ class HoldingsTests(ServiceTestCase):
         result = self.service().holdings_news([{"ticker": "7203.T", "name": "Toyota Motor Corporation"}])
         self.assertEqual([story["id"] for story in result["items"]], ["t1", "t3"])
         self.assertEqual(result["by_ticker"], {"7203.T": ["t1", "t3"]})
-        self.assertEqual(result["warnings"], ["7203.T: 0 headlines are filed under this symbol; 2 more were matched because their titles "
+        self.assertEqual(result["warnings"], ["7203.T: no headlines are filed under this symbol; 2 were matched because their titles "
                                               "mention “Toyota”. Check that they concern this listing."])
         self.assertEqual(self.market.calls, [search_call("7203.T"), search_call("Toyota Motor")])
         self.assertNotIn("t2", {row["id"] for row in self.rows("SELECT id FROM news_items")})
@@ -847,16 +873,19 @@ class HoldingsTests(ServiceTestCase):
         result = service.holdings_news([{"ticker": "7203.T", "name": None}, {"ticker": "0001.HK", "name": "Holdings Inc."}])
         self.assertEqual(self.market.queries, ["7203.T", "0001.HK"])
         self.assertEqual(result["warnings"], [
-            "7203.T: Yahoo Finance files few headlines under exchange-suffixed symbols and no company name was supplied for a name search.",
+            "7203.T: Yahoo Finance files few headlines under symbols with an exchange suffix, and no company name was available to "
+            "search instead.",
             "7203.T: no recent headlines were found.",
-            "0001.HK: Yahoo Finance files few headlines under exchange-suffixed symbols and the company name is too generic to search safely.",
+            "0001.HK: Yahoo Finance files few headlines under symbols with an exchange suffix, and the company name is too generic to "
+            "search reliably.",
             "0001.HK: no recent headlines were found.",
         ])
 
     def test_a_failed_name_search_is_a_warning(self):
         self.market.news["Toyota Motor"] = MarketUnavailable("timed out")
         result = self.service().holdings_news([{"ticker": "7203.T", "name": "Toyota Motor Corporation"}])
-        self.assertEqual(result["warnings"], ["7203.T: the company-name search for “Toyota Motor” failed (timed out).", "7203.T: no recent headlines were found."])
+        self.assertEqual(result["warnings"], ["7203.T: the company-name search for “Toyota Motor” could not be completed. Timed out.",
+                                              "7203.T: no recent headlines were found."])
         self.assertEqual(result["refreshed_at"], "2026-10-28T15:00:00Z")
 
     def test_name_matches_are_dropped_once_the_ticker_has_its_own_stories(self):
@@ -915,7 +944,8 @@ class HoldingsTests(ServiceTestCase):
         self.market.news["MSFT"] = MarketUnavailable("Yahoo Finance is unavailable (HTTP 503).")
         result = self.service().holdings_news(self.holdings("AAPL", "MSFT"))
         self.assertEqual(result["by_ticker"], {"AAPL": ["a1"], "MSFT": []})
-        self.assertEqual(result["warnings"], ["MSFT: news could not be refreshed (Yahoo Finance is unavailable (HTTP 503)). No saved headlines are available."])
+        self.assertEqual(result["warnings"], ["MSFT: news could not be refreshed. Yahoo Finance is unavailable (HTTP 503). "
+                                              "No saved headlines are available."])
         self.assertEqual(result["refreshed_at"], "2026-10-28T15:00:00Z")
 
     def test_saved_headlines_are_labelled_when_a_refresh_fails(self):
@@ -927,7 +957,8 @@ class HoldingsTests(ServiceTestCase):
         self.market.news["AAPL"] = MarketUnavailable("timed out")
         result = service.holdings_news(self.holdings("AAPL", "MSFT"))
         self.assertEqual(result["by_ticker"], {"AAPL": ["a1", "a3"], "MSFT": ["m1"]})
-        self.assertEqual(result["warnings"], ["AAPL: news could not be refreshed (timed out). Showing 2 headline(s) saved at 2026-10-28T15:00:00Z."])
+        self.assertEqual(result["warnings"], ["AAPL: news could not be refreshed. Timed out. Showing 2 saved headlines from "
+                                              "3:00 PM UTC on Oct 28, 2026."])
         self.assertEqual(result["refreshed_at"], "2026-10-28T16:00:00Z")
 
     def test_everything_failing_with_saved_data_returns_it_with_the_old_timestamp(self):
@@ -946,7 +977,7 @@ class HoldingsTests(ServiceTestCase):
         with self.assertRaises(MarketUnavailable) as caught:
             self.service().holdings_news(self.holdings("AAPL", "MSFT"))
         self.assertIn("Yahoo Finance is unavailable (HTTP 503)", str(caught.exception))
-        self.assertIn("no headlines were substituted", str(caught.exception))
+        self.assertTrue(str(caught.exception).startswith("News on your holdings could not be loaded."))
 
     def test_unsupported_tickers_are_warnings_and_do_not_trip_the_breaker(self):
         for ticker in ("A1", "B1", "C1", "D1"):
@@ -964,8 +995,8 @@ class HoldingsTests(ServiceTestCase):
         result = self.service().holdings_news(self.holdings("A1", "B1", "C1", "D1", "E1"))
         self.assertEqual(self.market.queries, ["A1", "B1", "C1", "D1"])
         self.assertEqual(result["by_ticker"]["A1"], ["a1"])
-        self.assertIn("E1: news could not be refreshed (not queried because 3 provider requests in a row failed). No saved headlines are available.",
-                      result["warnings"])
+        self.assertIn("E1: news could not be refreshed. LENS skipped this search after 3 failed requests in a row. "
+                      "No saved headlines are available.", result["warnings"])
 
     def test_a_success_resets_the_failure_run(self):
         for ticker in ("B1", "C1", "E1", "F1"):

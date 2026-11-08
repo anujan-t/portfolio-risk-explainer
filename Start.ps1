@@ -10,13 +10,13 @@ if (-not $Python) {
         python -m venv .venv
         if ($LASTEXITCODE -ne 0) { throw "Install Python 3.12 or newer before starting LENS." }
         & $Python -m pip install -r requirements-lock.txt
-        if ($LASTEXITCODE -ne 0) { throw "Portfolio dependency installation failed." }
+        if ($LASTEXITCODE -ne 0) { throw "The Python packages could not be installed; see the pip output above." }
     }
 }
 if (-not (Test-Path -LiteralPath "frontend\dist\index.html")) {
     throw "Build the frontend first: cd frontend; npm ci; npm run build. See RUNNING.txt."
 }
-Write-Host "LENS / Portfolio Risk Explainer: http://127.0.0.1:$Port"
-Write-Host "Private local portfolio storage; Ctrl+C stops this server."
+Write-Host "LENS: http://127.0.0.1:$Port"
+Write-Host "Portfolios are stored on this computer. Press Ctrl+C to stop the server."
 & $Python -m uvicorn backend.app:app --host 127.0.0.1 --port $Port
-if ($LASTEXITCODE -ne 0) { throw "The portfolio service exited with an error." }
+if ($LASTEXITCODE -ne 0) { throw "The LENS server stopped with an error; see the output above." }

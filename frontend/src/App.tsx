@@ -3,7 +3,6 @@ import { RotateCcw } from 'lucide-react';
 import { useLens } from './state/store';
 import { PAGES, useHashRoute, type Page } from './lib/hooks';
 import { Header } from './components/TopBar';
-import { ApertureMark } from './components/Logo';
 import { Notice } from './components/ui';
 import { BriefingPage } from './pages/Briefing';
 import { HoldingsPage } from './pages/Holdings';
@@ -32,8 +31,7 @@ function PageView({ page, sub }: { page: Page; sub: string | null }) {
 function BootScreen() {
   return (
     <div className="boot" role="status">
-      <ApertureMark size={40} className="boot__mark" />
-      <p className="boot__text">Opening LENS…</p>
+      <p className="boot__text">Loading LENS…</p>
     </div>
   );
 }
@@ -58,7 +56,7 @@ function BootError() {
           }
         >
           <p>{bootError}</p>
-          <p className="faint">LENS runs on this computer. Check that the service is running, then try again. No sample data is shown in its place.</p>
+          <p className="faint">LENS runs on this computer. Check that the LENS service is running, then try again.</p>
         </Notice>
       </div>
     </div>
@@ -73,7 +71,7 @@ export default function App() {
 
   useEffect(() => {
     const label = PAGES.find(item => item.id === route.page)?.label ?? 'Briefing';
-    document.title = `${label} · LENS`;
+    document.title = `${label} | LENS`;
     if (firstRender.current) {
       firstRender.current = false;
       return;
@@ -104,10 +102,7 @@ export default function App() {
         {boot === 'loading' ? <BootScreen /> : boot === 'error' ? <BootError /> : <PageView page={route.page} sub={route.sub} />}
       </main>
       <footer className="footer">
-        <div className="footer__inner">
-          <span>LENS runs on this computer. Market data and news come from public Yahoo Finance endpoints and may be delayed or unavailable.</span>
-          <span>Not investment advice.</span>
-        </div>
+        <p className="footer__inner">LENS runs on this computer. Prices and news come from Yahoo Finance and may be delayed. Not investment advice.</p>
       </footer>
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {announcement}

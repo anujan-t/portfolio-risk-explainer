@@ -8,7 +8,7 @@ import pandas as pd
 from risk import align_returns, concentration, normalize_holdings, price_returns
 from .market import SOURCE
 
-FUND_SECTOR = "Funds (no look-through)"
+FUND_SECTOR = "Funds (not looked through)"
 UNKNOWN_SECTOR = "Unknown"
 # periods per year, horizon label, minimum aligned observations
 FREQUENCIES = {"daily": (252, "day", 60), "weekly": (52, "week", 26)}
@@ -36,12 +36,13 @@ def resolve_frequency(requested, assets, history_range, at=None):
     offsets = [utc_offset_hours(asset["exchange_timezone"], at) for asset in assets.values()]
     spread = max(offsets) - min(offsets)
     if spread < TIMEZONE_SPREAD_HOURS:
-        return "daily", "All holdings and the benchmark close within the same time-zone band, so daily returns are synchronous."
+        return "daily", (f"All holdings and the benchmark close less than {TIMEZONE_SPREAD_HOURS} hours apart, so daily returns "
+                         "line up across markets.")
     if history_range == "6mo":
-        return "daily", (f"Markets close up to {spread:g} hours apart, but six months is too short for weekly returns. "
+        return "daily", (f"Markets close up to {spread:g} hours apart, but six months of history is too short for weekly returns. "
                          "Daily co-movement across these markets may be understated.")
-    return "weekly", (f"Markets close up to {spread:g} hours apart. Weekly returns reduce distortions from "
-                      "non-synchronous closing prices and different holidays.")
+    return "weekly", (f"Markets close up to {spread:g} hours apart, so weekly returns are used. They reduce the distortion "
+                      "from closing times and holidays that differ across markets.")
 
 
 def adjusted_series(asset):
@@ -51,7 +52,7 @@ def adjusted_series(asset):
 def prepare_market(portfolios, benchmark, history_range, market, refresh=False, frequency="auto"):
     base = portfolios[0]["base_currency"]
     if any(portfolio["base_currency"] != base for portfolio in portfolios):
-        raise ValueError("Baseline and scenario must use the same reporting currency.")
+        raise ValueError("The current and what-if portfolios must use the same base currency.")
     tickers = sorted({h["ticker"] for portfolio in portfolios for h in portfolio["holdings"]} | {benchmark})
     fetch = FETCH_RANGE.get(history_range, history_range)
     assets = {ticker: market.asset(ticker, fetch, refresh) for ticker in tickers}
@@ -130,47 +131,51 @@ def period_returns(asset):
 
 def explanations(holdings, conc, metrics, benchmark, observations, base, frequency):
     unit = "daily" if frequency == "daily" else "weekly"
-    horizon = "one-day" if frequency == "daily" else "one-week"
+    period = "day" if frequency == "daily" else "week"
     top = holdings[0]
+    count = "1 security" if conc["positions"] == 1 else f"{conc['positions']} securities"
     rows = [
-        {"title": "Largest exposure",
-         "text": f"{top['ticker']} is {top['weight']:.1%} of the portfolio's current value, and the three largest positions are "
-                 f"{conc['top_3_weight']:.1%}. A dominant position can drive results even when the others behave differently.",
+        {"title": "Largest position",
+         "text": f"{top['ticker']} is {top['weight']:.1%} of current value; the three largest positions together are "
+                 f"{conc['top_3_weight']:.1%}." + (f" At this weight, {top['ticker']} alone can drive the portfolio's result."
+                                                    if top["weight"] > 0.3 else ""),
          "severity": "warning" if top["weight"] > 0.3 else "info", "metric": "Position weights"},
-        {"title": "Position count versus concentration",
-         "text": f"There are {conc['positions']} securities, but their weights are equivalent to {conc['effective_positions']:.2f} "
-                 "equally weighted positions. This measure ignores correlations and the contents of funds.",
+        {"title": "Effective number of positions",
+         "text": f"The portfolio holds {count}. Their weights are equivalent to {conc['effective_positions']:.2f} equally weighted "
+                 "positions. The measure ignores correlations and the holdings inside funds.",
          "severity": "info", "metric": "HHI and effective positions"},
-        {"title": "Historical variability",
-         "text": f"Across {observations} aligned {unit} return observations, annualized volatility is {metrics['annual_volatility']:.1%}. "
-                 "It describes how widely past returns varied; it is not a forecast of gains or losses.",
+        {"title": "Volatility",
+         "text": f"Annualized volatility is {metrics['annual_volatility']:.1%}, measured over {observations} aligned {unit} returns. "
+                 "It describes how widely past returns varied and does not forecast gains or losses.",
          "severity": "info", "metric": f"{unit.capitalize()} standard deviation, annualized"},
-        {"title": "Market sensitivity",
-         "text": (f"Beta to {benchmark} is {metrics['beta']:.2f} over the same observations, in {base}. It summarizes past co-movement, "
-                  "not a guaranteed response to the next market move.") if metrics["beta"] is not None
-                 else f"{benchmark} has effectively zero return variance in this sample, so beta is undefined.",
+        {"title": "Sensitivity to the benchmark",
+         "text": (f"Beta to {benchmark} is {metrics['beta']:.2f}, measured over the same returns in {base}. It summarizes past "
+                  "co-movement; the response to the next market move can differ.") if metrics["beta"] is not None
+                 else f"{benchmark} returns show effectively no variance over this period, so beta is undefined.",
          "severity": "info", "metric": "Covariance ÷ benchmark variance"},
-        {"title": "Historical downside reference",
-         "text": f"The 95% historical {horizon} loss threshold is {metrics['historical_var_95']:.1%} (about {base} "
-                 f"{metrics['var_amount']:,.0f} at today's value); losses beyond it averaged {metrics['historical_es_95']:.1%}. "
+        {"title": "Value at risk and expected shortfall",
+         "text": f"In the worst 5% of past {period}s the loss was at least {metrics['historical_var_95']:.1%} (about {base} "
+                 f"{metrics['var_amount']:,.0f} at today's value), and those losses averaged {metrics['historical_es_95']:.1%}. "
                  "Future losses can be larger.",
          "severity": "info", "metric": "Historical VaR and expected shortfall"},
-        {"title": "Reading the simulated path",
-         "text": f"The largest peak-to-trough decline in the simulated path is {metrics['max_drawdown']:.1%}. The path applies today's "
-                 "weights to past returns with rebalancing each period; it is not your account's performance.",
+        {"title": "Maximum drawdown",
+         "text": f"The largest peak-to-trough fall in the simulated path is {metrics['max_drawdown']:.1%}. The path applies today's "
+                 f"weights to past returns, rebalanced each {period}, so it differs from the actual history of your account.",
          "severity": "info", "metric": "Constant-weight drawdown"},
     ]
     if conc["fund_weight"] > 0 or conc["unknown_sector_weight"] > 0:
-        rows.append({"title": "Sector coverage limits",
-                     "text": f"{conc['fund_weight']:.1%} is in funds without sector look-through and {conc['unknown_sector_weight']:.1%} "
-                             "has no sector classification. Fund overlaps and underlying exposures are not inferred.",
+        rows.append({"title": "Sector coverage",
+                     "text": f"{conc['fund_weight']:.1%} of the portfolio is in funds that are not looked through, and "
+                             f"{conc['unknown_sector_weight']:.1%} has no sector classification. Exposures inside funds and overlaps "
+                             "between them are not estimated.",
                      "severity": "warning", "metric": "Sector-data coverage"})
     drivers = [h for h in holdings if h["risk_contribution"] is not None]
     if drivers:
         driver = max(drivers, key=lambda h: h["risk_contribution"])
-        rows.append({"title": "Main source of measured risk",
-                     "text": f"{driver['ticker']} contributes {driver['risk_contribution']:.1%} of modeled portfolio volatility, including "
-                             "its co-movement with the other holdings. A negative contribution means a historical offset, not a riskless asset.",
+        rows.append({"title": "Largest contributor to risk",
+                     "text": f"{driver['ticker']} accounts for {driver['risk_contribution']:.1%} of modeled portfolio volatility, "
+                             "including its co-movement with the other holdings. A negative contribution means a holding offset "
+                             "portfolio moves in the past; it does not make that holding riskless.",
                      "severity": "info", "metric": "Covariance-based risk contribution"})
     return rows
 
@@ -201,7 +206,7 @@ def analyze(portfolio, snapshot, common_index=None):
         aligned = aligned.loc[common_index]
         dropped = candidates - len(aligned)
         if len(aligned) < minimum:
-            raise ValueError(f"Baseline and scenario need at least {minimum} common {frequency} returns.")
+            raise ValueError(f"The current and what-if portfolios need at least {minimum} common {frequency} returns.")
     portfolio_returns = aligned[weights.index].mul(weights, axis=1).sum(axis=1, min_count=len(weights))
     bench_returns = aligned[benchmark]
     covariance = aligned[weights.index].cov().to_numpy()
@@ -266,11 +271,11 @@ def analyze(portfolio, snapshot, common_index=None):
     warnings = list(dict.fromkeys(w for ticker in used for w in assets[ticker]["warnings"]))
     warnings.extend(w for item in snapshot["fx"].values() for w in item["warnings"])
     if dropped:
-        warnings.append(f"{dropped} candidate {frequency} return rows were excluded because a required price, FX rate or prior observation "
-                        "was missing. The simulated path skips those intervals.")
+        warnings.append(f"{dropped} {frequency} returns were excluded because a price, exchange rate or earlier observation was "
+                        "missing. The simulated path skips those intervals.")
     if snapshot["fx"]:
-        warnings.append(f"Foreign-currency holdings are converted to {base} with same-date FX closes for history and the latest completed "
-                        "FX close for valuation. FX and equity closing times differ.")
+        warnings.append(f"Holdings in other currencies are converted to {base} at same-date exchange-rate closes for history and at the "
+                        "latest completed close for valuation. Exchange rates and equities close at different times.")
     if any(assets[t]["currency_scale"] != 1 for t in used):
         warnings.append("Some securities are quoted in minor units (for example GBp pence); values are converted to whole currency units.")
     if len(aligned) < (126 if frequency == "daily" else 52):
@@ -278,8 +283,9 @@ def analyze(portfolio, snapshot, common_index=None):
     if beta is None:
         warnings.append("Benchmark variance is effectively zero; beta and benchmark correlation are undefined.")
     if len(sessions) < len(rows):
-        warnings.append("Latest-session moves are unavailable for some holdings because a previous close or exchange rate is missing.")
-    warnings.append("Research only. Historical estimates can change sharply and do not cover liquidity, leverage, options, intraday gaps or future regimes.")
+        warnings.append("The last-session change is not available for some holdings because a previous close or exchange rate is missing.")
+    warnings.append("Not investment advice. Historical estimates can change sharply and leave out liquidity, leverage, options, "
+                    "intraday gaps and future market conditions.")
     fetched = [assets[t]["fetched_at"] for t in used] + [item["fetched_at"] for item in snapshot["fx"].values()]
     return {
         "portfolio": portfolio, "total_value": total, "holdings": rows, "concentration": conc, "risk": metrics,
@@ -290,8 +296,9 @@ def analyze(portfolio, snapshot, common_index=None):
             "start_date": dates[0].strftime("%Y-%m-%d"), "end_date": dates[-1].strftime("%Y-%m-%d"),
             "observations": len(aligned), "min_observations": minimum, "candidate_observations": candidates,
             "dropped_observations": dropped, "priced_weight": 1.0,
-            "return_method": (f"{frequency.capitalize()} returns from adjacent observed adjusted closes in {base}; complete-case alignment; "
-                              "no forward filling" + ("; weekly prices are each security's last close of the week" if frequency == "weekly" else "")),
+            "return_method": (f"{frequency.capitalize()} returns from consecutive adjusted closes in {base}; only dates with a price for "
+                              "every security are used, and gaps are not filled"
+                              + ("; each week uses each security's last close of that week" if frequency == "weekly" else "")),
         },
         "session": {
             "change_base": session_change,
@@ -303,20 +310,25 @@ def analyze(portfolio, snapshot, common_index=None):
                for iso, item in sorted(snapshot["fx"].items())],
         "series": series, "correlations": {"tickers": list(weights.index), "matrix": [[number_or_none(v) for v in r] for r in corr.to_numpy()]},
         "explanations": explanations(rows, conc, metrics, benchmark, len(aligned), base, frequency),
-        "explanation_method": "Deterministic explanations grounded in the computed metrics; not an LLM",
+        "explanation_method": "Fixed LENS rules and thresholds applied to the figures in this analysis; no language model is used",
         "warnings": warnings,
         "assumptions": [
-            "Long-only stocks, ETFs and mutual funds with fractional shares. No margin, shorts, derivatives, cash yield, taxes or fees.",
-            "Valuation uses each security's latest completed close and the latest completed FX close — not real-time executable prices.",
-            "History uses dividend- and split-adjusted closes. Today's weights are applied to past returns with rebalancing each period.",
-            "Quote units such as GBp, ZAc and ILA are converted to GBP, ZAR and ILS before FX conversion.",
-            "FX uses the provider's direct pair, the inverted reverse pair, or a cross through USD; the method is listed for each currency.",
-            "When markets close in different time zones, weekly returns can be selected automatically to limit non-synchronous price effects.",
-            "Beta, correlations and risk contributions share the same observations and reporting currency.",
-            "95% historical VaR is the loss at the fifth return percentile; expected shortfall averages returns at or below it.",
-            "Funds are not looked through; ETF and mutual-fund sector, country and overlap exposures are not inferred.",
-            "Explanations are rule-based summaries, not generated by an external AI service. Share quantities, values and screenshots "
-            "never leave this computer; only ticker symbols, company names and date ranges are sent to the market-data provider.",
+            "Long-only positions in stocks, ETFs and mutual funds; fractional shares are allowed. Margin, short positions, derivatives, "
+            "cash yield, taxes and fees are excluded.",
+            "Valuations use each security's latest completed close and the latest completed exchange-rate close. They are neither "
+            "real-time nor executable prices.",
+            "History uses dividend- and split-adjusted closes. Today's weights are applied to past returns and rebalanced each period.",
+            "Quote units such as GBp, ZAc and ILA are converted to GBP, ZAR and ILS before currency conversion.",
+            "Exchange rates come from Yahoo Finance's direct pair, the inverted reverse pair or a cross rate through USD; the method is "
+            "listed for each currency.",
+            f"When markets close {TIMEZONE_SPREAD_HOURS} or more hours apart and the range is one year or longer, Auto uses weekly "
+            "returns to limit the effect of different closing times.",
+            "Beta, correlations and risk contributions use the same observations and the same base currency.",
+            "Historical value at risk (95%) is the loss at the 5th percentile of returns; expected shortfall is the average loss at "
+            "or beyond that point.",
+            "Funds are not looked through: LENS does not estimate the sector, country or overlap exposures inside ETFs and mutual funds.",
+            "Risk notes come from fixed rules; no AI service is used. Share quantities, values and screenshots stay on this computer. "
+            "Only ticker symbols, company names and date ranges are sent to Yahoo Finance.",
         ],
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="microseconds"),
         "market_fetched_at": min(fetched, key=lambda value: datetime.fromisoformat(value)), "source": SOURCE,
@@ -328,7 +340,8 @@ def compare_scenario(baseline, scenario, snapshot):
     minimum = FREQUENCIES[snapshot["frequency"]][2]
     common = snapshot["returns"][needed].dropna().index
     if len(common) < minimum:
-        raise ValueError(f"Scenario comparison needs at least {minimum} jointly observed {snapshot['frequency']} returns; found {len(common)}.")
+        raise ValueError(f"The comparison needs at least {minimum} {snapshot['frequency']} returns observed for every holding in both "
+                         f"portfolios; {len(common)} were found. Choose a longer range or remove recently listed securities.")
     before, after = analyze(baseline, snapshot, common), analyze(scenario, snapshot, common)
     return {
         "baseline": before, "scenario": after,

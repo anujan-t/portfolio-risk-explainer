@@ -105,18 +105,19 @@ def align_returns(holdings, returns, benchmark=None, minimum=2):
     weights = holding_weights(holdings)
     missing = sorted(set(weights.index) - set(returns.columns))
     if missing:
-        raise ValueError(f"cannot price the full portfolio; missing history for: {', '.join(missing)}")
+        raise ValueError(f"The portfolio cannot be fully priced; missing history for: {', '.join(missing)}.")
     columns = list(weights.index)
     if benchmark is not None:
         if benchmark not in returns:
-            raise ValueError(f"benchmark history is missing: {benchmark}")
+            raise ValueError(f"No price history is available for the benchmark {benchmark}.")
         if benchmark not in columns:
             columns.append(benchmark)
     selected = returns.loc[:, columns].apply(pd.to_numeric, errors="raise")
     observations = selected.dropna(how="all").shape[0]
     aligned = selected.replace([np.inf, -np.inf], np.nan).dropna()
     if len(aligned) < minimum:
-        raise ValueError(f"at least {minimum} common observed daily returns are required; found {len(aligned)}")
+        raise ValueError(f"At least {minimum} common returns across the holdings and the benchmark are needed; {len(aligned)} were "
+                         "found. Choose a longer range or remove recently listed securities.")
     return weights, aligned, observations - len(aligned), observations
 
 

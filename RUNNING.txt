@@ -1,8 +1,8 @@
 LENS / PORTFOLIO RISK EXPLAINER
 ===============================
 
-Local portfolio intelligence. Research and education only; not investment
-advice, not a trading or brokerage system.
+A portfolio risk tool that runs on this computer. For research and education.
+Not investment advice. LENS does not trade and does not connect to a brokerage.
 
 QUICK START (Windows PowerShell)
   python -m venv .venv
@@ -24,22 +24,23 @@ ENVIRONMENT
   LENS_BACKGROUND=0         disable the background news refresher
 
 PORTFOLIOS
-  Up to 25 distinct long-only stocks, ETFs or mutual funds; positive
-  fractional quantities. Duplicate tickers are combined. Reporting currencies:
-  USD CAD EUR GBP JPY AUD CHF HKD SGD INR CNY SEK NZD.
-  Not modelled: shorts, margin, options, futures, crypto, raw indices, cash
-  yield, taxes, fees. Examples are hypothetical and never saved automatically.
-  Saved portfolios use revision numbers; a stale update or delete returns 409.
+  Up to 25 distinct long-only stocks, ETFs or mutual funds with positive,
+  possibly fractional, quantities. Duplicate tickers are combined. Base
+  currencies: USD CAD EUR GBP JPY AUD CHF HKD SGD INR CNY SEK NZD.
+  Not modeled: short positions, margin, options, futures, crypto, raw indices,
+  cash yield, taxes and fees. Example portfolios are hypothetical and are never
+  saved automatically. Saved portfolios carry revision numbers; an update or
+  delete based on an out-of-date revision returns 409.
 
 SCREENSHOT IMPORT
   Paste, drop or choose a PNG, JPEG, WebP, BMP or GIF up to 8 MB.
   The image is streamed into memory, read by RapidOCR running offline on this
   computer, and discarded when the request ends. It is never written to disk
-  or sent to the data provider; only recognised ticker symbols or company
+  or sent to the data provider; only recognized ticker symbols or company
   names are looked up.
-  Each recognised row proposes a listing and a share quantity:
+  Each recognized row proposes a listing and a share quantity:
     - quantities come from a Shares/Quantity column, from a quantity × price
-      ≈ market value check, from the only unlabelled number (flagged), or are
+      ≈ market value check, from the only unlabeled number (flagged), or are
       estimated from market value ÷ latest close (flagged);
     - rows reconcile quantity × price against the screenshot's market value;
     - when a symbol trades on several exchanges (for example RY and RY.TO),
@@ -49,33 +50,36 @@ SCREENSHOT IMPORT
 
 MARKET DATA
   Yahoo Finance public chart and search endpoints (unofficial; no API key).
-  May be delayed, change, or be rate-limited; one retry after HTTP 429/5xx,
-  then a visible error. No synthetic substitutes.
-  Cached for six hours; "refresh" bypasses the cache. A failed refresh never
-  replaces a valid cached record.
+  Data can be delayed, change or be rate-limited. LENS retries once after HTTP
+  429, 502, 503 or 504 and then shows an error. Nothing is substituted.
+  Responses are cached for six hours; "refresh" bypasses the cache. A failed
+  refresh never replaces a valid cached record.
   Valuation: latest completed daily close; the current unfinished session is
   excluded. History: dividend- and split-adjusted closes, daily bars only.
   "Max" history is requested with explicit date bounds because the provider
   otherwise returns quarterly bars; any non-daily data is rejected.
-  Six-month and one-year analyses fetch two years so trailing one-year holding
-  returns are exact, then trim the risk window to the requested length.
+  Six-month and one-year analyses fetch two years so that trailing one-year
+  holding returns are exact, then trim the risk window to the requested length.
   Duplicate same-day bars (some exchanges add a post-close bar) are accepted
   only when identical or on the latest session; conflicts are rejected.
+  Connection errors are reported as "LENS could not reach Yahoo Finance"; the
+  technical details go to the server log only.
 
 CURRENCIES
   Quote units GBp, GBX, ZAc and ILA are 1/100 of GBP, ZAR and ILS.
   Conversion order: direct pair (e.g. JPYUSD=X), else the inverted reverse
-  pair, else a cross through USD. Each pair's quote currency is verified;
-  Yahoo's USDXXX=X → XXX=X alias is accepted only for that exact form.
-  Historical prices use same-date FX closes; missing FX dates leave missing
-  prices (never forward-filled). Latest-session moves use the most recent FX
-  close on or before each session date.
+  pair, else a cross rate through USD. Each pair's quote currency is verified.
+  Yahoo's alias XXX=X for USDXXX=X is accepted only in that exact form.
+  Historical prices use same-date exchange-rate closes; a missing rate leaves
+  the price missing (never forward-filled). Last-session moves use the most
+  recent exchange-rate close on or before each session date.
 
 RETURN FREQUENCY
   Auto: daily when every holding and the benchmark close within three hours of
-  each other; weekly (Friday, each security's last close of the week) when
-  they do not. Weekly requires at least one year of history; a final
-  unfinished week is dropped. Daily needs ≥ 60 aligned returns, weekly ≥ 26.
+  each other; otherwise weekly (Friday, using each security's last close of
+  the week). With a six-month range Auto stays daily and says why. Weekly
+  needs at least one year of history; a final unfinished week is dropped.
+  Daily needs at least 60 aligned returns, weekly at least 26.
 
 MATH
   weight = shares × close × unit scale × FX / total value
@@ -87,29 +91,31 @@ MATH
   drawdown = index / running peak − 1
   95% VaR = −5th percentile of period returns (≥ 0)
   95% expected shortfall = −mean of returns at or below that percentile
-  The simulated path is not account performance; estimates are not forecasts.
+  The simulated path differs from account performance, and the estimates do
+  not forecast future results.
 
 NEWS
   Sector board: for each of 11 GICS sectors, a US Select Sector SPDR proxy
   (XLC XLY XLP XLE XLF XLV XLI XLK XLB XLRE XLU) and an iShares Global sector
   proxy (IXP RXI KXI IXC IXG IXJ EXI IXN MXI REET JXI). Moves: 1 day, 1 week,
-  1 month, year to date, from adjusted closes. Headlines from the provider's
-  news for each proxy, newest first, kept for 21 days.
-  Refreshes in the background after start-up and every
-  LENS_NEWS_REFRESH_HOURS; manual refresh is limited to once per 10 minutes.
-  Holdings news: provider news whose related tickers include the holding;
-  for exchange-suffixed listings with little coverage, titles matching the
-  company name are included and labelled. Cached for 30 minutes.
+  1 month and year to date, from adjusted closes. Headlines come from the
+  provider's news for each proxy, newest first, and are kept for 21 days.
+  The board refreshes in the background after start-up and every
+  LENS_NEWS_REFRESH_HOURS; a manual refresh is limited to once per 10 minutes.
+  News on holdings: provider news whose related tickers include the holding.
+  For listings with an exchange suffix and little coverage, headlines whose
+  titles name the company are included and labeled. Cached for 30 minutes.
   Global sector proxies carry few headlines, so most sector stories come from
-  the US proxies. No sentiment or impact scores are generated.
+  the US proxies. LENS does not score sentiment or likely price impact.
 
 PRIVACY
   Data folder: %LOCALAPPDATA%\PortfolioRiskExplainer (portfolios.sqlite3).
-  SQLite is protected by Windows account permissions, not encrypted.
+  The SQLite file is protected by Windows account permissions and is not
+  encrypted.
   Sent to the provider: ticker symbols, company names for search, date ranges.
   Never sent: quantities, values, portfolio names, screenshots.
-  Explanations are rule-based; nothing is sent to an AI service.
-  Server binds to 127.0.0.1; cross-origin writes are rejected.
+  Risk notes come from fixed rules; nothing is sent to an AI service.
+  The server binds to 127.0.0.1 and rejects cross-origin writes.
 
 TESTS
   .\.venv\Scripts\python.exe -m unittest discover -s tests -v

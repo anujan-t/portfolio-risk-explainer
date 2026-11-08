@@ -84,7 +84,7 @@ class Portfolio(StrictModel):
     @classmethod
     def valid_base(cls, value):
         if value not in BASE_CURRENCIES:
-            raise ValueError(f"Reporting currency must be one of {', '.join(BASE_CURRENCIES)}.")
+            raise ValueError(f"Choose a base currency from: {', '.join(BASE_CURRENCIES)}.")
         return value
 
     @model_validator(mode="after")
@@ -125,7 +125,7 @@ class ScenarioRequest(Benchmarked):
     @model_validator(mode="after")
     def same_currency(self):
         if self.baseline.base_currency != self.scenario.base_currency:
-            raise ValueError("Baseline and scenario must use the same reporting currency.")
+            raise ValueError("The current and what-if portfolios must use the same base currency.")
         return self
 
 
@@ -300,7 +300,7 @@ def create_app(data_dir=None, market_client=None, news_service=None, background=
     else:
         @app.get("/")
         def missing_build():
-            return JSONResponse(status_code=503, content={"detail": "Build frontend assets using npm run build in frontend, then restart the server."})
+            return JSONResponse(status_code=503, content={"detail": "The LENS frontend has not been built. Run npm run build in the frontend folder, then restart the server."})
     return app
 
 

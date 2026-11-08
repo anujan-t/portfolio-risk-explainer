@@ -3,15 +3,21 @@ import { RefreshCw, RotateCcw } from 'lucide-react';
 import type { Analysis } from '../types';
 import { useAppliedNews, useLens } from '../state/store';
 import { useNow } from '../lib/hooks';
-import { amountParts, dateRange, fmtDate, fmtWhen, num, percent, plural, relative, sentence, shortDate } from '../lib/format';
-import { boardCloseDate, boardHasContent, boardHasMoves, heldTickersByItem, orderSectors, previewNews, sectorExposures, shortSector } from '../lib/derive';
+import { amount, dateRange, fmtDate, fmtTime, fmtWhen, num, parseDate, percent, plural, relative, sameDay, sentence, shortDate, signedPercent } from '../lib/format';
+import { boardCloseDate, boardHasContent, boardHasMoves, heldTickersByItem, orderSectors, previewNews, sectorExposures } from '../lib/derive';
 import { AnalysisStatus, NoAnalysis, PageHeader } from '../components/page';
-import { Badge, Delta, ExampleBadge, Notice, Panel, ScrollRegion, Spinner, cx } from '../components/ui';
+import { Delta, FigureTable, Notice, Panel, ScrollRegion, Spinner, cx, type FigureRow } from '../components/ui';
 import { Sparkline } from '../components/charts/Sparkline';
 import { DivergingBars } from '../components/Bars';
 import { NewsList } from '../components/News';
 
 const SPARK_POINTS = 90;
+
+function newsDateline(at: string | null, refreshing: boolean, today: Date): string {
+  const parsed = parseDate(at);
+  if (!parsed) return refreshing ? 'News being collected' : 'News not collected yet';
+  return sameDay(parsed, today) ? `News updated ${fmtTime(parsed)}` : `News ${shortDate(at, today)}`;
+}
 
 export function BriefingPage() {
   const { applied, board, draft } = useLens();
@@ -26,28 +32,21 @@ export function BriefingPage() {
     <div className="page briefing">
       <PageHeader
         title="Briefing"
-        meta={
-          <>
-            <span className="page-head__date">{fmtDate(today, 'long')}</span>
-            <span className="page-head__sep" aria-hidden="true" />
-            <span>{name}</span>
-            <span className="page-head__sep" aria-hidden="true" />
-            <span>{priceDate ? `Prices: completed closes to ${shortDate(priceDate, today)}` : 'Prices: not analyzed yet'}</span>
-            <span className="page-head__sep" aria-hidden="true" />
-            <span>{newsAt ? `News updated ${fmtWhen(newsAt, today)}` : board.refreshing ? 'News: collecting now' : 'News: not collected yet'}</span>
-          </>
-        }
-      >
-        {applied?.hypothetical && <ExampleBadge />}
-      </PageHeader>
+        dateline={[
+          name,
+          priceDate ? `Prices to ${shortDate(priceDate, today)}` : 'Not yet analyzed',
+          newsDateline(newsAt, board.refreshing, today),
+        ]}
+        example={applied?.hypothetical}
+      />
       <AnalysisStatus />
-      {analysis ? <KeyFigures analysis={analysis} /> : <NoAnalysis what="Portfolio figures" />}
+      {analysis ? <KeyFigures analysis={analysis} /> : <NoAnalysis what="Key figures" />}
       <div className="grid band">
-        {analysis && <Movers analysis={analysis} />}
+        {analysis && <LargestMoves analysis={analysis} />}
         {analysis && <HoldingsNewsPanel analysis={analysis} now={now} />}
-        <SectorPulse analysis={analysis} wide={!analysis} />
+        <SectorPerformance analysis={analysis} wide={!analysis} />
       </div>
-      <SectorDesk analysis={analysis} now={now} />
+      <SectorNews analysis={analysis} now={now} />
     </div>
   );
 }
@@ -56,76 +55,92 @@ export function BriefingPage() {
 
 function KeyFigures({ analysis }: { analysis: Analysis }) {
   const base = analysis.portfolio.base_currency;
-  const { whole, fraction } = amountParts(analysis.total_value, base);
   const session = analysis.session;
-  const recent = analysis.series.slice(-SPARK_POINTS);
-  const unit = analysis.coverage.frequency === 'weekly' ? 'week' : 'session';
-  const sparkChange = recent.length > 1 ? recent[recent.length - 1].portfolio / recent[0].portfolio - 1 : null;
-  const currencies = analysis.concentration.currency_exposures.length;
+  const coverage = analysis.coverage;
   const risk = analysis.risk;
+  const benchmark = analysis.benchmark.ticker;
+  const recent = analysis.series.slice(-SPARK_POINTS);
+  const unit = coverage.frequency === 'weekly' ? 'week' : 'session';
+  const trend = recent.length > 1 ? recent[recent.length - 1].portfolio / recent[0].portfolio - 1 : null;
+  const currencies = analysis.concentration.currency_exposures.length;
+  const holdings = `${plural(analysis.concentration.positions, 'holding')} in ${plural(currencies, 'currency', 'currencies')}`;
+  const covered = `covers ${percent(session.covered_weight, 0)} of value`;
+
+  const valueRows: FigureRow[] = [
+    {
+      label: 'Total value',
+      detail: coverage.priced_weight < 0.9995 ? `${holdings}; ${percent(coverage.priced_weight, 0)} of value priced` : holdings,
+      value: `${amount(analysis.total_value, base)} ${base}`,
+      headline: true,
+    },
+    {
+      label: 'Change, last session',
+      detail: session.latest_date ? `${fmtDate(session.latest_date)}; ${covered}` : covered,
+      value: (
+        <>
+          <Delta kind="money" value={session.change_base} currency={base} /> (<Delta value={session.return_base} />)
+        </>
+      ),
+    },
+    {
+      label: `Last ${plural(recent.length, unit)}`,
+      detail: recent.length > 1 ? dateRange(recent[0].date, recent[recent.length - 1].date) : undefined,
+      value: (
+        <div className="figure-trend">
+          <div className="figure-trend__spark">
+            <Sparkline
+              values={recent.map(point => point.portfolio)}
+              height={22}
+              title="Portfolio value index"
+              description={`Portfolio value index over the last ${recent.length} ${unit}s; ${trend === null ? 'no change is available' : `the change was ${signedPercent(trend, 1)}`}.`}
+            />
+          </div>
+          <Delta value={trend} />
+        </div>
+      ),
+    },
+  ];
+  const riskRows: FigureRow[] = [
+    {
+      label: 'Return over the period',
+      detail: (
+        <>
+          <span className="mono">{benchmark}</span> {signedPercent(risk.benchmark_return, 1)}
+        </>
+      ),
+      value: <Delta value={risk.historical_return} digits={1} />,
+    },
+    { label: 'Annual volatility', value: percent(risk.annual_volatility, 1) },
+    {
+      label: (
+        <>
+          Beta to <span className="mono">{benchmark}</span>
+        </>
+      ),
+      detail: analysis.benchmark.name,
+      value: num(risk.beta, 2),
+    },
+    { label: 'Maximum drawdown', value: percent(risk.max_drawdown, 1) },
+  ];
 
   return (
-    <section className="figures" aria-label="Key figures">
-      <div className="figures__cell figures__cell--value">
-        <p className="figure-label">Total value</p>
-        <p className="hero-figure">
-          <span className="hero-figure__whole">{whole}</span>
-          <span className="hero-figure__fraction">{fraction}</span>
-          <span className="hero-figure__ccy">{base}</span>
-        </p>
-        <p className="figure-sub">
-          {plural(analysis.concentration.positions, 'holding')} · {plural(currencies, 'currency', 'currencies')}
-          {analysis.coverage.priced_weight < 0.9995 ? ` · ${percent(analysis.coverage.priced_weight, 0)} priced` : ''}
-        </p>
+    <Panel
+      className="key-figures"
+      title="Key figures"
+      meta={`Values in ${base}. Return and risk use ${coverage.frequency} returns, ${dateRange(coverage.start_date, coverage.end_date)}.`}
+      source="Yahoo Finance daily closes, dividends and exchange rates; LENS calculations."
+    >
+      <div className="key-figures__tables">
+        <FigureTable rows={valueRows} caption={`Portfolio value and recent change, in ${base}`} />
+        <FigureTable rows={riskRows} caption="Return and risk over the analysis period" />
       </div>
-      <div className="figures__cell">
-        <p className="figure-label">Latest session{session.latest_date ? ` · ${shortDate(session.latest_date)}` : ''}</p>
-        <p className="big-figure">
-          <Delta kind="money" value={session.change_base} currency={base} />
-          <span className="big-figure__ccy">{base}</span>
-        </p>
-        <p className="figure-sub">
-          <Delta value={session.return_base} />
-          <span className="figure-sub__note">covers {percent(session.covered_weight, 0)} of holdings by value</span>
-        </p>
-      </div>
-      <div className="figures__cell figures__cell--spark">
-        <p className="figure-label">
-          Last {plural(recent.length, unit)}
-          {recent.length > 1 ? ` · ${dateRange(recent[0].date, recent[recent.length - 1].date)}` : ''}
-        </p>
-        <Sparkline
-          values={recent.map(point => point.portfolio)}
-          title="Portfolio trend"
-          description={`Portfolio value index over the last ${recent.length} ${unit}s, ${sparkChange === null ? 'no change available' : `a change of ${percent(sparkChange, 1, true)}`}.`}
-        />
-        <p className="figure-sub">
-          <Delta value={sparkChange} /> <span className="figure-sub__note">over this stretch, in {base}</span>
-        </p>
-      </div>
-      <dl className="figures__list">
-        <div className="figures__item">
-          <dt>Annual volatility</dt>
-          <dd>{percent(risk.annual_volatility, 1)}</dd>
-        </div>
-        <div className="figures__item">
-          <dt>
-            Beta vs <span className="mono">{analysis.benchmark.ticker}</span>
-          </dt>
-          <dd>{num(risk.beta, 2)}</dd>
-        </div>
-        <div className="figures__item">
-          <dt>Max drawdown</dt>
-          <dd>{percent(risk.max_drawdown, 1)}</dd>
-        </div>
-      </dl>
-    </section>
+    </Panel>
   );
 }
 
-// ---- Movers ------------------------------------------------------------------------------
+// ---- Largest moves -------------------------------------------------------------------------
 
-function Movers({ analysis }: { analysis: Analysis }) {
+function LargestMoves({ analysis }: { analysis: Analysis }) {
   const [all, setAll] = useState(false);
   const base = analysis.portfolio.base_currency;
   const sorted = useMemo(
@@ -148,25 +163,26 @@ function Movers({ analysis }: { analysis: Analysis }) {
   return (
     <Panel
       className="col-4 movers"
-      title="Movers"
-      meta={`Latest completed session per holding · value change in ${base}`}
+      title="Largest moves, last session"
+      meta={`Change in value of each holding over its latest completed session, in ${base}`}
+      source="Yahoo Finance daily closes and exchange rates; LENS calculations."
       actions={
         sorted.length > 10 ? (
           <button type="button" className="button button--quiet button--small" onClick={() => setAll(value => !value)} aria-expanded={all}>
-            {all ? 'Top and bottom 5' : `All ${sorted.length}`}
+            {all ? 'Show top and bottom 5' : `Show all ${sorted.length}`}
           </button>
         ) : undefined
       }
     >
-      {withValue.length === 0 && <p className="faint">No holding has a completed session with same-date exchange rates yet.</p>}
+      {withValue.length === 0 && <p className="faint">No holding has a completed session with a same-date exchange rate yet.</p>}
       <DivergingBars
-        label={`Holdings by latest-session value change in ${base}`}
+        label={`Holdings by change in value over the latest session, in ${base}`}
         data={shown.map(holding => ({
           key: holding.ticker,
           label: <span className="mono">{holding.ticker}</span>,
           value: holding.session?.change_base ?? null,
           title: holding.session
-            ? `${holding.name}: session ${fmtDate(holding.session.date)} vs ${fmtDate(holding.session.previous_date)}`
+            ? `${holding.name}: close on ${fmtDate(holding.session.date)} against ${fmtDate(holding.session.previous_date)}`
             : `${holding.name}: no completed session`,
           display: (
             <span className="dbars__figure">
@@ -178,10 +194,10 @@ function Movers({ analysis }: { analysis: Analysis }) {
           ),
         }))}
       />
-      {limited && <p className="panel__foot faint">Showing the five largest gains and losses of {sorted.length} holdings.</p>}
+      {limited && <p className="panel__foot faint">The five largest gains and five largest losses of {sorted.length} holdings.</p>}
       {missing.length > 0 && !limited && (
         <p className="panel__foot faint">
-          {plural(missing.length, 'holding')} without a same-date exchange rate or completed session {missing.length === 1 ? 'is' : 'are'} listed last.
+          {plural(missing.length, 'holding')} without a completed session or a same-date exchange rate {missing.length === 1 ? 'is' : 'are'} listed last.
         </p>
       )}
     </Panel>
@@ -203,12 +219,13 @@ function HoldingsNewsPanel({ analysis, now }: { analysis: Analysis; now: number 
   return (
     <Panel
       className="col-4 headlines"
-      title="In the news"
-      meta={news?.data ? `Headlines about your holdings · updated ${relative(news.data.refreshed_at, now)}` : 'Headlines about your holdings'}
+      title="News on your holdings"
+      meta={news?.data ? `Recent headlines that mention your holdings; updated ${relative(news.data.refreshed_at, now)}` : 'Recent headlines that mention your holdings'}
+      source="Yahoo Finance news search for each holding."
       actions={
         items.length > NEWS_PREVIEW ? (
           <button type="button" className="button button--quiet button--small" onClick={() => setAll(value => !value)} aria-expanded={all}>
-            {all ? 'Fewer' : `All ${items.length}`}
+            {all ? 'Show fewer' : `Show all ${items.length}`}
           </button>
         ) : undefined
       }
@@ -219,7 +236,7 @@ function HoldingsNewsPanel({ analysis, now }: { analysis: Analysis; now: number 
         </p>
       )}
       {news?.status === 'error' && (
-        <Notice tone="error" title="News is unavailable right now">
+        <Notice tone="error" title="Headlines could not be loaded">
           {news.error}
         </Notice>
       )}
@@ -228,7 +245,7 @@ function HoldingsNewsPanel({ analysis, now }: { analysis: Analysis; now: number 
           {items.length === 0 ? (
             <p className="faint">No recent headlines were found for these holdings.</p>
           ) : (
-            <NewsList items={shown} now={now} label="Headlines about your holdings" heldFor={item => held?.get(item.id) ?? []} />
+            <NewsList items={shown} now={now} label="Headlines that mention your holdings" heldFor={item => held?.get(item.id) ?? []} />
           )}
           {news.data.warnings.length > 0 && (
             <details className="panel__details" open={news.data.warnings.some(warning => /could not/i.test(warning))}>
@@ -240,16 +257,16 @@ function HoldingsNewsPanel({ analysis, now }: { analysis: Analysis; now: number 
               </ul>
             </details>
           )}
-          <p className="panel__foot faint">Links open the original publisher. Source: {news.data.source}.</p>
+          <p className="panel__foot faint">Headlines link to the publisher’s site.</p>
         </>
       )}
     </Panel>
   );
 }
 
-// ---- Sector pulse ------------------------------------------------------------------------
+// ---- Sector performance ------------------------------------------------------------------
 
-function SectorPulse({ analysis, wide }: { analysis: Analysis | null; wide: boolean }) {
+function SectorPerformance({ analysis, wide }: { analysis: Analysis | null; wide: boolean }) {
   const { board } = useLens();
   const exposures = useMemo(() => sectorExposures(analysis), [analysis]);
   const sectors = boardHasMoves(board.data) ? (board.data?.sectors ?? []) : [];
@@ -259,37 +276,38 @@ function SectorPulse({ analysis, wide }: { analysis: Analysis | null; wide: bool
   return (
     <Panel
       className={wide ? 'col-12' : 'col-4 col-wide-md'}
-      title="Sector pulse"
-      meta={`US Select Sector and iShares Global sector proxies${closeDate ? ` · closes to ${shortDate(closeDate)}` : ''}`}
+      title="Sector performance"
+      meta={`Sector ETF returns${closeDate ? ` to the ${shortDate(closeDate)} close` : ''}; US Select Sector SPDR and iShares Global sector funds as proxies`}
+      source="Yahoo Finance daily closes of the sector ETFs; LENS calculations."
     >
       {board.loading && !board.data && (
         <p className="loading-line">
-          <Spinner /> Loading sector proxies…
+          <Spinner /> Loading sector returns…
         </p>
       )}
       {board.loadError && !board.data && (
-        <Notice tone="error" title="Sector data is unavailable right now">
+        <Notice tone="error" title="Sector returns could not be loaded">
           {board.loadError}
         </Notice>
       )}
       {board.data && sectors.length === 0 &&
         (board.refreshing ? (
           <p className="loading-line">
-            <Spinner /> Collecting sector proxy prices. The first collection after the service starts takes about a minute.
+            <Spinner /> Collecting sector ETF prices. The first collection after LENS starts takes about a minute.
           </p>
         ) : (
-          <p className="faint">No sector data has been collected yet. Use Refresh on the sector desk to collect it.</p>
+          <p className="faint">Sector returns have not been collected yet. Use Refresh under Sector news to collect them.</p>
         ))}
       {sectors.length > 0 && (
-        <ScrollRegion label="Sector pulse table">
+        <ScrollRegion label="Sector performance table">
           <table className="ledger ledger--compact pulse">
-            <caption className="sr-only">Sector moves for the latest completed session and the last month, with your portfolio’s exposure.</caption>
+            <caption className="sr-only">Sector returns for the latest completed session and the last month, with the portfolio’s weight in each sector.</caption>
             <thead>
               <tr>
                 <th scope="col">Sector</th>
                 {analysis && (
                   <th scope="col" className="num">
-                    Yours
+                    Weight
                   </th>
                 )}
                 <th scope="col" className="num">
@@ -310,21 +328,18 @@ function SectorPulse({ analysis, wide }: { analysis: Analysis | null; wide: bool
                 const month = sector.us ?? sector.global;
                 return (
                   <tr key={sector.id} className={cx(held && 'is-held')}>
-                    <th scope="row" className="pulse__name" title={sector.name}>
-                      <span aria-hidden="true">{shortSector(sector.name)}</span>
-                      <span className="sr-only">
-                        {sector.name}
-                        {held ? ' (held)' : ''}
-                      </span>
+                    <th scope="row" className="pulse__name">
+                      {sector.name}
+                      {held && <span className="sr-only"> (held)</span>}
                     </th>
-                    {analysis && <td className="num">{held ? percent(exposure, 1) : <span className="faint">—</span>}</td>}
+                    {analysis && <td className="num">{held ? percent(exposure, 1) : <span className="sr-only">Not held</span>}</td>}
                     <td className="num" title={sector.us ? `${sector.us.proxy_name} (${sector.us.proxy})` : 'No US proxy data'}>
                       <Delta value={sector.us?.d1} />
                     </td>
                     <td className="num pulse__global" title={sector.global ? `${sector.global.proxy_name} (${sector.global.proxy})` : 'No global proxy data'}>
                       <Delta value={sector.global?.d1} />
                     </td>
-                    <td className="num" title={month ? `${month.proxy}: one-month move` : undefined}>
+                    <td className="num" title={month ? `${month.proxy}: one-month return` : undefined}>
                       <Delta value={month?.m1} />
                     </td>
                   </tr>
@@ -336,7 +351,7 @@ function SectorPulse({ analysis, wide }: { analysis: Analysis | null; wide: bool
       )}
       {sectors.length > 0 && (
         <p className="panel__foot faint">
-          {analysis ? <><span className="held-key" aria-hidden="true" /> Held sector · </> : null}1M uses the US proxy when available.
+          {analysis ? 'Sectors in bold are held in the portfolio. ' : ''}1M uses the US proxy where available.
           {unmapped.length > 0 && ` Not mapped to a sector: ${unmapped.map(([name, weight]) => `${name} ${percent(weight, 1)}`).join(', ')}.`}
         </p>
       )}
@@ -344,9 +359,9 @@ function SectorPulse({ analysis, wide }: { analysis: Analysis | null; wide: bool
   );
 }
 
-// ---- Sector desk -------------------------------------------------------------------------
+// ---- Sector news -------------------------------------------------------------------------
 
-function SectorDesk({ analysis, now }: { analysis: Analysis | null; now: number }) {
+function SectorNews({ analysis, now }: { analysis: Analysis | null; now: number }) {
   const { board, refreshNews, reloadBoard, config } = useLens();
   const exposures = useMemo(() => sectorExposures(analysis), [analysis]);
   const ordered = useMemo(() => orderSectors(board.data, exposures), [board.data, exposures]);
@@ -358,17 +373,18 @@ function SectorDesk({ analysis, now }: { analysis: Analysis | null; now: number 
   const collected = boardHasContent(board.data);
 
   const meta = refreshedAt
-    ? `Updated ${fmtWhen(refreshedAt)} (${relative(refreshedAt, now)})${nextAt ? ` · automatic refresh about every ${config?.news_refresh_hours ?? 6} h, next ${fmtWhen(nextAt)}` : ''}`
+    ? `Updated ${fmtWhen(refreshedAt)} (${relative(refreshedAt, now)}).${nextAt ? ` Refreshed automatically about every ${plural(config?.news_refresh_hours ?? 6, 'hour')}; next at ${fmtWhen(nextAt)}.` : ''}`
     : refreshing
-      ? 'First collection in progress'
-      : 'Not collected yet';
+      ? 'The first collection is in progress.'
+      : 'Not collected yet.';
 
   return (
     <Panel
-      id="sector-desk"
+      id="sector-news"
       className="desk-panel"
-      title="Sector desk"
+      title="Sector news"
       meta={meta}
+      source="Yahoo Finance news search by sector and daily closes of the sector ETFs."
       actions={
         <button type="button" className="button" onClick={refreshNews} disabled={refreshing || (board.loading && !board.data)}>
           <RefreshCw size={14} aria-hidden="true" className={cx(refreshing && 'spin')} />
@@ -380,10 +396,10 @@ function SectorDesk({ analysis, now }: { analysis: Analysis | null; now: number 
       <div className="desk__status">
         {refreshing && (
           <p className="loading-line">
-            <Spinner /> Collecting sector headlines and proxy prices. This can take a minute; the page stays usable.
+            <Spinner /> Collecting sector headlines and ETF prices. This can take a minute; the rest of the page can be used meanwhile.
           </p>
         )}
-        {board.note && <Badge tone="neutral">{board.note}</Badge>}
+        {board.note && <p className="faint">{board.note}</p>}
         {board.refreshError && (
           <Notice tone="error" title="The refresh could not be started" live>
             {board.refreshError}
@@ -398,7 +414,7 @@ function SectorDesk({ analysis, now }: { analysis: Analysis | null; now: number 
       {board.loadError && !board.data && (
         <Notice
           tone="error"
-          title="News is unavailable right now"
+          title="Sector news could not be loaded"
           actions={
             <button type="button" className="button" onClick={reloadBoard}>
               <RotateCcw size={14} aria-hidden="true" />
@@ -410,12 +426,12 @@ function SectorDesk({ analysis, now }: { analysis: Analysis | null; now: number 
         </Notice>
       )}
       {lastError && board.data && (
-        <Notice tone="warn" title="The last news refresh did not complete">
+        <Notice tone="warn" title="The last news refresh was incomplete">
           {lastError}
           {refreshedAt ? ` ${sentence(`Headlines below are from ${fmtWhen(refreshedAt)}`)}` : ''}
         </Notice>
       )}
-      {board.data && !collected && !refreshing && <p className="faint">No sectors have been collected yet. Use Refresh to collect them.</p>}
+      {board.data && !collected && !refreshing && <p className="faint">Sector news has not been collected yet. Use Refresh to collect it.</p>}
       {collected && (
         <div className="desk">
           {ordered.all.map(sector => {
@@ -427,7 +443,7 @@ function SectorDesk({ analysis, now }: { analysis: Analysis | null; now: number 
                   <h3 className="desk__name" id={`desk-${sector.id}`}>
                     {sector.name}
                   </h3>
-                  {held && <span className="desk__held">Held · {percent(exposure, 1)}</span>}
+                  {held && <span className="desk__held">Held, {percent(exposure, 1)}</span>}
                 </header>
                 <p className="desk__moves">
                   {[sector.us, sector.global].map((move, index) =>
@@ -438,7 +454,7 @@ function SectorDesk({ analysis, now }: { analysis: Analysis | null; now: number 
                       </span>
                     ) : (
                       <span key={index} className="desk__move faint">
-                        {index === 0 ? 'US' : 'Global'} proxy unavailable
+                        No {index === 0 ? 'US' : 'global'} proxy price
                       </span>
                     ),
                   )}

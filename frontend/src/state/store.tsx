@@ -174,7 +174,7 @@ function mostRecent(portfolios: SavedPortfolio[]): SavedPortfolio | null {
 const EMPTY_BOARD: BoardState = { data: null, loading: true, loadError: null, status: null, refreshing: false, note: null, refreshError: null };
 
 function readTheme(): Theme {
-  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
 }
 
 export function LensProvider({ children }: { children: ReactNode }) {
@@ -271,7 +271,7 @@ export function LensProvider({ children }: { children: ReactNode }) {
     analysisController.current?.abort();
     analysisController.current = null;
     setPending(null);
-    announce('Analysis cancelled. The previous results are unchanged.');
+    announce('Analysis canceled. The previous results are unchanged.');
   }, [announce]);
 
   // ---- Sector news board ------------------------------------------------------
@@ -290,7 +290,7 @@ export function LensProvider({ children }: { children: ReactNode }) {
             }
             return api.sectorNews().then(data => {
               setBoard(previous => ({ ...previous, data, status, refreshing: false, loadError: null }));
-              announce(status.last_error ? `News refresh finished with an error: ${status.last_error}` : 'Sector news updated.');
+              announce(status.last_error ? `Sector news refresh finished with errors. ${status.last_error}` : 'Sector news updated.');
             });
           })
           .catch(error => {
@@ -325,8 +325,8 @@ export function LensProvider({ children }: { children: ReactNode }) {
         };
         if (result.status === 'skipped') {
           const note = result.next_allowed_at
-            ? sentence(`Skipped — next refresh available at ${fmtWhen(result.next_allowed_at)}`)
-            : 'Skipped — news was refreshed recently.';
+            ? sentence(`Not refreshed: sector news was updated recently. The next manual refresh is available at ${fmtWhen(result.next_allowed_at)}`)
+            : 'Not refreshed: sector news was updated recently.';
           setBoard(previous => ({ ...previous, refreshing: false, status, note }));
           announce(note);
           return;
@@ -607,6 +607,7 @@ export function LensProvider({ children }: { children: ReactNode }) {
       const next: Theme = previous === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', next);
       document.documentElement.style.colorScheme = next;
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? '#15181d' : '#f5f1e8');
       try {
         window.localStorage.setItem('lens-theme', next);
       } catch {

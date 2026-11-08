@@ -75,33 +75,33 @@ _MAX_QUANTITY = 1e9
 _LOW_CONFIDENCE = 0.85
 _NAME_CONFIDENCE = 0.8
 
-ISSUE_NAME_MATCH = "Matched by company name — confirm the security"
-ISSUE_SINGLE_NUMBER = "Quantity inferred from the only unlabelled number — confirm"
-ISSUE_DERIVED_LATEST = "Quantity estimated from market value ÷ latest close — enter the exact share count"
-ISSUE_DERIVED_SHOWN = "Quantity estimated from market value ÷ price shown — enter the exact share count"
-ISSUE_ENTER_QUANTITY = "Enter the share quantity"
-ISSUE_NOT_FOUND = "Not found in market data — search manually"
-ISSUE_MARKET_DOWN = "Market data unavailable; could not verify this symbol"
-ISSUE_SEVERAL = "Several listings match — choose the exchange"
-ISSUE_SEVERAL_NAMES = "Several securities match this name — choose one"
-ISSUE_CONFUSABLE = "Check characters that OCR can confuse (0/O, 1/I)"
-ISSUE_DUPLICATE = "Appears more than once — the UI will combine quantities"
-ISSUE_LOW_OCR = "Low OCR confidence"
-ISSUE_LOOKUP_LIMIT = "Symbol lookup limit reached — search manually"
-ISSUE_UNSUPPORTED = "Listings were found but none can be priced for analysis — search manually"
-ISSUE_AMBIGUOUS_FORMAT = "Number format is ambiguous (1,234 vs 1.234) — confirm the values"
-ISSUE_RANGE = "The quantity read is outside the supported range — enter it manually"
-ISSUE_SEVERAL_QUANTITIES = "Several numbers could be the quantity — enter the share quantity"
-ISSUE_NEGATIVE = "The share count shown is zero or negative — enter the quantity"
-ISSUE_LOOKS_LIKE_PRICE = "The only unlabelled number looks like a price, not a share count — enter the quantity"
-ISSUE_NOT_RECONCILED = "Numbers on this line do not reconcile — check the quantity"
-ISSUE_SEVERAL_SYMBOLS = "More than one symbol was read on this line — confirm the security"
-ISSUE_NO_SHARES_CELL = "No number was read in the quantity column for this line"
-ISSUE_MIXED_CURRENCIES = "The price and market value are shown in different currencies — the quantity was not estimated"
+ISSUE_NAME_MATCH = "Matched by company name. Confirm the security."
+ISSUE_SINGLE_NUMBER = "The quantity was taken from the only unlabeled number. Confirm it."
+ISSUE_DERIVED_LATEST = "Quantity estimated as market value ÷ latest close. Enter the exact share count."
+ISSUE_DERIVED_SHOWN = "Quantity estimated as market value ÷ price shown. Enter the exact share count."
+ISSUE_ENTER_QUANTITY = "Enter the share quantity."
+ISSUE_NOT_FOUND = "Not found in market data. Search for the security manually."
+ISSUE_MARKET_DOWN = "Market data was unavailable, so this symbol could not be checked."
+ISSUE_SEVERAL = "Several listings match. Choose the exchange."
+ISSUE_SEVERAL_NAMES = "Several securities match this name. Choose one."
+ISSUE_CONFUSABLE = "Check characters that OCR can confuse (0 and O, 1 and I)."
+ISSUE_DUPLICATE = "This security appears more than once; its quantities will be combined."
+ISSUE_LOW_OCR = "Low OCR confidence."
+ISSUE_LOOKUP_LIMIT = "The symbol lookup limit was reached. Search for the security manually."
+ISSUE_UNSUPPORTED = "Listings were found, but none can be priced for analysis. Search for the security manually."
+ISSUE_AMBIGUOUS_FORMAT = "The number format is ambiguous (1,234 or 1.234). Confirm the values."
+ISSUE_RANGE = "The quantity read is outside the supported range. Enter it manually."
+ISSUE_SEVERAL_QUANTITIES = "Several numbers could be the quantity. Enter the share quantity."
+ISSUE_NEGATIVE = "The share count shown is zero or negative. Enter the quantity."
+ISSUE_LOOKS_LIKE_PRICE = "The only unlabeled number looks like a price. Enter the share quantity."
+ISSUE_NOT_RECONCILED = "The numbers on this line do not reconcile. Check the quantity."
+ISSUE_SEVERAL_SYMBOLS = "More than one symbol was read on this line. Confirm the security."
+ISSUE_NO_SHARES_CELL = "No number was read in the quantity column for this line."
+ISSUE_MIXED_CURRENCIES = "The price and market value are shown in different currencies, so the quantity was not estimated."
 
-WARN_NO_ROWS = ("No holdings were recognised in this screenshot. Make sure the holdings table is visible "
+WARN_NO_ROWS = ("No holdings were recognized in this screenshot. Make sure the holdings table is visible "
                 "and legible, or add the positions manually.")
-WARN_NO_HEADER = "No column header found — values were matched by consistency checks only"
+WARN_NO_HEADER = "No column header was found, so values were matched by consistency checks only."
 WARN_NO_TEXT = "No text could be read from the image."
 WARN_MARKET_DOWN = "Market data is unavailable, so symbols, listings and prices could not be verified."
 WARN_LOOKUP_LIMIT = f"Only the first {_MAX_LOOKUPS} symbols were looked up; search the remaining rows manually."
@@ -1697,8 +1697,8 @@ def _derived_quantity(rn: _RowNumbers, listing: Optional[_Listing], issues: list
     if listing is None or listing.price is None:
         return None
     if not _latest_refs(value, listing):
-        issues.append(f"The market value is shown in {_currency_label(_marker(value.num))} but {listing.ticker} trades "
-                      f"in {listing.currency_iso or 'an unknown currency'}; the quantity was not estimated")
+        issues.append(f"The market value is shown in {_currency_label(_marker(value.num))}, but {listing.ticker} trades "
+                      f"in {listing.currency_iso or 'an unknown currency'}, so the quantity was not estimated.")
         return None
     issues.append(ISSUE_DERIVED_LATEST)
     return _Pick(round(_amount(value) / (listing.price * listing.scale), 6), "derived_from_value", [value], None, value)
@@ -1802,7 +1802,7 @@ def _check(q: Optional[float], source: str, price: Optional[_Token], value: Opti
             return {"status": "consistent", "detail": f"Quantity × latest close of {name} is within {gap:.0%} of the market "
                                                       "value shown; prices may have moved since the screenshot."}
         return {"status": "inconsistent", "detail": f"Quantity × latest close of {name} differs from the market value shown "
-                                                    f"by {gap:.0%} — check the quantity, listing or currency."}
+                                                    f"by {gap:.0%}. Check the quantity, listing or currency."}
     if value is None:
         return {"status": "unverified", "detail": "No market value was read to cross-check the quantity."}
     return {"status": "unverified", "detail": "No latest price is available to cross-check the quantity."}
@@ -1944,7 +1944,7 @@ def _build_row(index: int, proposal: _Proposal, resolver: _Resolver, global_hint
     clue = _price_clue(rn)
     symbol = proposal.symbol.text if proposal.symbol is not None else None
     if proposal.kind == "soft":
-        issues.append(f"“{symbol}” is also a common label — confirm it is the ticker")
+        issues.append(f"“{symbol}” is also a common label. Confirm that it is the ticker.")
     if proposal.several_symbols:
         issues.append(ISSUE_SEVERAL_SYMBOLS)
     by_name = symbol is None
@@ -1977,12 +1977,12 @@ def _build_row(index: int, proposal: _Proposal, resolver: _Resolver, global_hint
         gap = _clue_gap(_clue(_amount(price_token), [price_token]), selected)
         if gap == math.inf:
             issues.append(f"{selected.ticker} trades in {selected.currency_iso or 'an unknown currency'}, but the price "
-                          "is shown in another currency — confirm the listing and currency")
+                          "is shown in another currency. Confirm the listing and currency.")
         elif gap is not None and gap > _MARKET_TOLERANCE:
-            issues.append(f"The price shown differs from the latest close of {selected.ticker} by {gap:.0%} — "
-                          "confirm the listing and currency")
+            issues.append(f"The price shown differs from the latest close of {selected.ticker} by {gap:.0%}. "
+                          "Confirm the listing and currency.")
     if selected is not None and proposal.name and not by_name and not _names_agree(proposal.name, selected.name):
-        issues.append(f"The name shown does not match {selected.ticker} ({selected.name}) — confirm the security")
+        issues.append(f"The name shown does not match {selected.ticker} ({selected.name}). Confirm the security.")
 
     identity = proposal.name_tokens if by_name else [proposal.symbol]
     used = [*identity, *pick.used, price_token, value_token]

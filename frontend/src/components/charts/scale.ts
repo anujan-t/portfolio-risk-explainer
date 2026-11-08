@@ -115,5 +115,5 @@ export function times(dates: string[]): number[] {
   return dates.map(date => parseDate(date)?.getTime() ?? Number.NaN);
 }
 
-/** Read the --lx-* token-driven font sizes for SVG text consistently. */
-export const AXIS_FONT = 11;
+/** Font size for SVG axis and label text (sans, 12px). */
+export const AXIS_FONT = 12;

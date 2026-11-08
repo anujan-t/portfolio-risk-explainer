@@ -1,10 +1,9 @@
 import { useId, useMemo, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { RotateCcw } from 'lucide-react';
 import type { Analysis } from '../../types';
 import { useElementSize } from '../../lib/hooks';
 import { fmtDate, num, points as pp } from '../../lib/format';
 import { Delta } from '../ui';
-import { AXIS_FONT, areaPath, linePath, linear, nearestIndex, niceAxis, timeTicks, times } from './scale';
+import { AXIS_FONT, linePath, linear, nearestIndex, niceAxis, timeTicks, times } from './scale';
 import { safeId } from './Sparkline';
 
 type SeriesPoint = Analysis['series'][number];
@@ -15,8 +14,8 @@ const digitsFor = (ticks: number[]) => {
 };
 
 /**
- * Portfolio vs benchmark, both rebased to 100 at the start of the selected window.
- * Pointer or arrow keys move the crosshair; two native range inputs choose the window.
+ * Portfolio and benchmark, both rebased to 100 at the start of the selected window, labeled directly at the
+ * right-hand end of each line. Pointer or arrow keys move the crosshair; two native range inputs choose the window.
  */
 export function PerformanceChart({
   series,
@@ -43,7 +42,7 @@ export function PerformanceChart({
   const width = size.width;
   const compact = width > 0 && width < 560;
   const height = compact ? 220 : 300;
-  const margin = { top: 12, right: compact ? 40 : 52, bottom: 26, left: 2 };
+  const margin = { top: 12, right: compact ? 8 : 84, bottom: 26, left: 40 };
   const plotRight = Math.max(margin.left + 10, width - margin.right);
   const plotBottom = height - margin.bottom;
 
@@ -72,6 +71,16 @@ export function PerformanceChart({
     const sliceX = xs.slice(lo, hi + 1);
     const pY = portfolio.slice(lo, hi + 1).map(y);
     const bY = benchmark.slice(lo, hi + 1).map(y);
+    // Direct labels at the end of each line, nudged apart when the two ends are close.
+    let labelP = y(portfolio[hi]);
+    let labelB = y(benchmark[hi]);
+    if (Number.isFinite(labelP) && Number.isFinite(labelB) && Math.abs(labelP - labelB) < 14) {
+      const middle = (labelP + labelB) / 2;
+      const above = labelP <= labelB ? -7 : 7;
+      labelP = middle + above;
+      labelB = middle - above;
+    }
+    const clamp = (value: number) => Math.min(plotBottom - 2, Math.max(margin.top + 4, value));
     return {
       portfolio,
       benchmark,
@@ -80,7 +89,8 @@ export function PerformanceChart({
       xs,
       portfolioPath: linePath(sliceX, pY),
       benchmarkPath: linePath(sliceX, bY),
-      portfolioArea: areaPath(sliceX, pY, plotBottom),
+      labelP: clamp(labelP),
+      labelB: clamp(labelB),
       ticks: timeTicks(t[lo], t[hi], plotRight - margin.left).map(tick => ({ ...tick, x: x(tick.time) })),
       digits: digitsFor(axis.ticks),
     };
@@ -160,14 +170,8 @@ export function PerformanceChart({
             onKeyDown={onKey}
             onBlur={() => setCursor(null)}
           >
-            <title id={`${id}-t`}>Performance indexed to 100: portfolio versus {benchmarkTicker}. Use the left and right arrow keys to read values.</title>
+            <title id={`${id}-t`}>Performance indexed to 100, portfolio and {benchmarkTicker}. Use the left and right arrow keys to read values.</title>
             <desc id={`${id}-d`}>{describe}</desc>
-            <defs>
-              <linearGradient id={`${id}-fill`} x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" className="chart__fill-stop chart__fill-stop--top" />
-                <stop offset="100%" className="chart__fill-stop chart__fill-stop--bottom" />
-              </linearGradient>
-            </defs>
             <g className="chart__grid">
               {model.axis.ticks.map(tick => (
                 <line key={tick} x1={margin.left} x2={plotRight} y1={Math.round(model.y(tick)) + 0.5} y2={Math.round(model.y(tick)) + 0.5} className={tick === 100 ? 'is-base' : undefined} />
@@ -175,7 +179,7 @@ export function PerformanceChart({
             </g>
             <g className="chart__axis" fontSize={AXIS_FONT}>
               {model.axis.ticks.map(tick => (
-                <text key={tick} x={width - 2} y={model.y(tick) + 4} textAnchor="end">
+                <text key={tick} x={margin.left - 8} y={model.y(tick) + 4} textAnchor="end">
                   {num(tick, model.digits)}
                 </text>
               ))}
@@ -190,9 +194,22 @@ export function PerformanceChart({
                 <line key={tick.time} x1={Math.round(tick.x) + 0.5} x2={Math.round(tick.x) + 0.5} y1={plotBottom} y2={plotBottom + 4} />
               ))}
             </g>
-            <path d={model.portfolioArea} fill={`url(#${id}-fill)`} />
             <path d={model.benchmarkPath} className="chart__line chart__line--benchmark" />
             <path d={model.portfolioPath} className="chart__line chart__line--portfolio" />
+            {!compact && (
+              <g className="chart__labels" fontSize={AXIS_FONT} aria-hidden="true">
+                {Number.isFinite(model.labelB) && (
+                  <text x={plotRight + 8} y={model.labelB + 4} className="chart__label chart__label--benchmark">
+                    {benchmarkTicker}
+                  </text>
+                )}
+                {Number.isFinite(model.labelP) && (
+                  <text x={plotRight + 8} y={model.labelP + 4} className="chart__label chart__label--portfolio">
+                    Portfolio
+                  </text>
+                )}
+              </g>
+            )}
             {cursor !== null && cursor >= lo && cursor <= hi && (
               <g className="chart__cursor">
                 <line x1={model.xs[cursor]} x2={model.xs[cursor]} y1={margin.top} y2={plotBottom} />
@@ -258,7 +275,7 @@ export function PerformanceChart({
             <span>
               <span className="mono">{benchmarkTicker}</span> <Delta value={windowB} />
             </span>
-            <span className="faint">Difference {pp(windowP - windowB)}</span>
+            <span className="faint">Difference: {pp(windowP - windowB)}</span>
             {!fullWindow && (
               <button
                 type="button"
@@ -268,8 +285,7 @@ export function PerformanceChart({
                   setWindowRange([0, last]);
                 }}
               >
-                <RotateCcw size={13} aria-hidden="true" />
-                Full range
+                Show full range
               </button>
             )}
           </div>

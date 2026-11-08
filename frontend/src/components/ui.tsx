@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from 'lucide-react';
-import { DASH, amount, currencyDigits, isNum, num, percent, roundsToZero } from '../lib/format';
+import { X } from 'lucide-react';
+import { DASH, currencyDigits, isNum, percent, points, roundsToZero, signedNum } from '../lib/format';
 
 export const cx = (...names: (string | false | null | undefined)[]) => names.filter(Boolean).join(' ');
 
-// ---- Panels ------------------------------------------------------------------------
+// ---- Exhibits ------------------------------------------------------------------------
 
+/**
+ * A report exhibit: hairline ink rule, an automatically numbered "Exhibit N" line (CSS counter,
+ * reset per page), the title and an optional subtitle, the content, then a source line.
+ * Pass `exhibit={false}` for forms and editors: they keep the rule and title but take no number.
+ */
 export function Panel({
   title,
   meta,
@@ -15,6 +20,8 @@ export function Panel({
   id,
   headingLevel = 2,
   flush,
+  source,
+  exhibit = true,
 }: {
   title?: ReactNode;
   meta?: ReactNode;
@@ -24,14 +31,18 @@ export function Panel({
   id?: string;
   headingLevel?: 2 | 3;
   flush?: boolean;
+  /** Text after "Source:", e.g. "Yahoo Finance daily closes; LENS calculations." Omit for forms. */
+  source?: ReactNode;
+  exhibit?: boolean;
 }) {
   const headingId = useId();
   const Heading = headingLevel === 2 ? 'h2' : 'h3';
   return (
-    <section className={cx('panel', flush && 'panel--flush', className)} id={id} aria-labelledby={title ? headingId : undefined}>
-      {(title || actions || meta) && (
+    <section className={cx('panel', exhibit && 'exhibit', flush && 'panel--flush', className)} id={id} aria-labelledby={title ? headingId : undefined}>
+      {(title || actions || meta || exhibit) && (
         <header className="panel__head">
           <div className="panel__titles">
+            {exhibit && <p className="exhibit__number" aria-hidden="true" />}
             {title && (
               <Heading className="panel__title" id={headingId}>
                 {title}
@@ -43,11 +54,43 @@ export function Panel({
         </header>
       )}
       <div className="panel__body">{children}</div>
+      {source && <p className="exhibit__source">Source: {source}</p>}
     </section>
   );
 }
 
-/** Horizontal scroller for wide tables; becomes a focusable, labelled region only while it overflows. */
+/** A compact two-column table of key figures: label on the left, value on the right in tabular figures. */
+export interface FigureRow {
+  label: ReactNode;
+  value: ReactNode;
+  /** Short qualifier under the label, e.g. a date or the horizon. */
+  detail?: ReactNode;
+  headline?: boolean;
+  title?: string;
+}
+
+export function FigureTable({ rows, caption, className }: { rows: FigureRow[]; caption?: string; className?: string }) {
+  return (
+    <table className={cx('figure-table', className)}>
+      {caption && <caption className="sr-only">{caption}</caption>}
+      <tbody>
+        {rows.map((row, index) => (
+          <tr key={index} className={cx(row.headline && 'is-headline')}>
+            <th scope="row">
+              {row.label}
+              {row.detail && <span className="figure-table__detail">{row.detail}</span>}
+            </th>
+            <td className="num" title={row.title}>
+              {row.value}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** Horizontal scroller for wide tables; becomes a focusable, labeled region only while it overflows. */
 export function ScrollRegion({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
   const [node, setNode] = useState<HTMLDivElement | null>(null);
   const [overflowing, setOverflowing] = useState(false);
@@ -76,7 +119,6 @@ export function ScrollRegion({ label, className, children }: { label: string; cl
 // ---- Status --------------------------------------------------------------------------
 
 type Tone = 'info' | 'warn' | 'error' | 'success';
-const TONE_ICON = { info: Info, warn: TriangleAlert, error: CircleAlert, success: CircleCheck } as const;
 
 export function Notice({
   tone = 'info',
@@ -95,10 +137,8 @@ export function Notice({
   live?: boolean;
   className?: string;
 }) {
-  const Icon = TONE_ICON[tone];
   return (
     <div className={cx('notice', `notice--${tone}`, className)} role={live ? (tone === 'error' ? 'alert' : 'status') : undefined}>
-      <Icon className="notice__icon" size={16} aria-hidden="true" />
       <div className="notice__content">
         {title && <p className="notice__title">{title}</p>}
         {children && <div className="notice__text">{children}</div>}
@@ -113,7 +153,7 @@ export function Notice({
   );
 }
 
-export function Badge({ tone = 'neutral', children, title }: { tone?: 'neutral' | 'brass' | 'up' | 'down' | 'warn'; children: ReactNode; title?: string }) {
+export function Badge({ tone = 'neutral', children, title }: { tone?: 'neutral' | 'accent' | 'up' | 'down' | 'warn'; children: ReactNode; title?: string }) {
   return (
     <span className={cx('badge', `badge--${tone}`)} title={title}>
       {children}
@@ -121,8 +161,9 @@ export function Badge({ tone = 'neutral', children, title }: { tone?: 'neutral' 
   );
 }
 
-export function ExampleBadge() {
-  return <Badge tone="warn">Example portfolio — hypothetical</Badge>;
+/** Plain italic note shown under the dateline when the applied portfolio is an example. */
+export function ExampleNote() {
+  return <p className="example-note">Example portfolio with hypothetical holdings.</p>;
 }
 
 export function Spinner({ label }: { label?: string }) {
@@ -148,7 +189,7 @@ export function EmptyState({ title, children, action }: { title: ReactNode; chil
 
 type DeltaKind = 'percent' | 'money' | 'number' | 'points';
 
-/** Signed change shown with ▲/▼ (never colour alone). Market tone colours gains/losses; neutral tone only shows direction. */
+/** Signed change with a plus sign or a true minus (never color alone). Market tone colors gains and losses; neutral tone does not. */
 export function Delta({
   value,
   kind = 'percent',
@@ -170,32 +211,21 @@ export function Delta({
     return (
       <span className={cx('delta', 'delta--na', className)} title="Not available">
         {DASH}
-        <span className="sr-only">not available</span>
       </span>
     );
   }
   const places = digits ?? (kind === 'percent' ? 2 : kind === 'money' ? currencyDigits(currency) : kind === 'points' ? 1 : 2);
   const zero = roundsToZero(value, places, kind === 'percent' || kind === 'points');
   const direction = zero ? 'flat' : value > 0 ? 'up' : 'down';
-  const magnitude = Math.abs(value);
+  const shown = zero ? 0 : value;
   const text =
     kind === 'percent'
-      ? percent(magnitude, places)
-      : kind === 'money'
-        ? amount(magnitude, currency, places)
-        : kind === 'points'
-          ? `${num(magnitude * 100, places)} pp`
-          : num(magnitude, places);
-  const arrow = direction === 'up' ? '▲' : direction === 'down' ? '▼' : '';
-  const spoken = direction === 'up' ? (tone === 'market' ? 'up' : 'increase') : direction === 'down' ? (tone === 'market' ? 'down' : 'decrease') : 'no change';
+      ? percent(shown, places, true)
+      : kind === 'points'
+        ? points(shown, places)
+        : signedNum(shown, places);
   return (
     <span className={cx('delta', tone === 'market' ? `delta--${direction}` : 'delta--neutral', className)}>
-      {arrow && (
-        <span className="delta__arrow" aria-hidden="true">
-          {arrow}
-        </span>
-      )}
-      <span className="sr-only">{spoken} </span>
       {text}
       {suffix}
     </span>

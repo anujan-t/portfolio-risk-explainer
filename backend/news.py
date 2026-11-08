@@ -1,4 +1,4 @@
-"""Sector pulse and holding news from Yahoo Finance's keyless public endpoints.
+"""Sector performance and holding news from Yahoo Finance's keyless public endpoints.
 
 Headlines are shown as the provider returned them, with publisher, link, timestamp and the reason they were
 collected. Nothing here scores sentiment or predicts price impact, and a failed request is reported to the caller
@@ -20,7 +20,7 @@ import time
 import unicodedata
 from urllib.parse import urlparse
 
-from .market import MarketUnavailable, UnsupportedAsset
+from .market import UNREACHABLE, MarketUnavailable, UnsupportedAsset
 from .sectors import SECTORS
 
 log = logging.getLogger(__name__)
@@ -47,6 +47,8 @@ RETRY_SECONDS = 900.0
 RUNNING_REASON = "A news refresh is already running."
 FRESH_REASON = "Sector data is newer than the refresh interval."
 STOPPING_REASON = "The refresh was interrupted because the service is stopping."
+UNEXPECTED = "An unexpected error occurred; the details are in the LENS server log."
+MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
 
 CORPORATE_WORDS = frozenset(
     "inc incorporated corp corporation co company ltd limited plc ag sa nv se ab asa as spa bv gmbh kgaa llc lp oyj oy public "
@@ -75,6 +77,29 @@ def parse_time(value):
     except ValueError:
         return None
     return moment.replace(tzinfo=timezone.utc) if moment.tzinfo is None else moment.astimezone(timezone.utc)
+
+
+def readable_time(value):
+    """An ISO timestamp as '3:00 PM UTC on Oct 28, 2026' for messages; unparseable values are returned unchanged."""
+    moment = parse_time(value)
+    if not moment:
+        return str(value)
+    hour = moment.hour % 12 or 12
+    period = "AM" if moment.hour < 12 else "PM"
+    return f"{hour}:{moment.minute:02d} {period} UTC on {MONTHS[moment.month - 1]} {moment.day}, {moment.year}"
+
+
+def _sentence(text):
+    text = " ".join(str(text).split()).strip()
+    if not text:
+        return ""
+    text = text[0].upper() + text[1:]
+    return text if text.endswith((".", "?", "!")) else text + "."
+
+
+def _join(items):
+    items = list(items)
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
 
 
 def clean_text(value):
@@ -461,13 +486,15 @@ class NewsService:
         return accepted, len(news) - len(accepted)
 
     @staticmethod
-    def _explain(exc):
-        if isinstance(exc, (MarketUnavailable, UnsupportedAsset, ValueError)):
-            message = str(exc)
-        else:
-            log.warning("Unexpected error while refreshing news", exc_info=exc)
-            message = f"unexpected {type(exc).__name__}: {exc}"
-        return " ".join(message.split())[:200] or type(exc).__name__
+    def _reason(exc):
+        """A short reason that is safe to show. Errors that can carry local details (paths, certificates) are only logged."""
+        if isinstance(exc, (MarketUnavailable, UnsupportedAsset)) or (isinstance(exc, ValueError) and not isinstance(exc, OSError)):
+            return " ".join(str(exc).split())[:200] or "Yahoo Finance did not return usable data."
+        if isinstance(exc, OSError):
+            log.warning("Could not reach Yahoo Finance while refreshing news", exc_info=exc)
+            return UNREACHABLE
+        log.warning("Unexpected error while refreshing news", exc_info=exc)
+        return UNEXPECTED
 
     # ---- sector refresh ----------------------------------------------------------------------------------------
     def refresh_sectors(self, force=False):
@@ -485,7 +512,7 @@ class NewsService:
             outcome = self._refresh(force)
         except Exception as exc:
             log.exception("News refresh failed")
-            message = f"The news refresh failed unexpectedly: {self._explain(exc)}"
+            message = "The sector news refresh stopped because of an unexpected error. The details are in the LENS server log; try again later."
             with self.store.connect() as db:
                 self._put_meta(db, "last_error", message)
             outcome = {"status": "failed", "reason": message}
@@ -502,7 +529,7 @@ class NewsService:
             if refreshed is not None and timedelta(0) <= now - refreshed < timedelta(hours=self.refresh_hours):
                 return {"status": "skipped", "reason": FRESH_REASON}
         stamp, pacer = iso(now), _Pacer(self._sleep, self.request_spacing)
-        failures, succeeded, stored, rejected = {}, 0, 0, 0
+        failures, reasons, succeeded, stored, rejected = {}, [], 0, 0, 0
         for sector in SECTORS:
             if self._stop.is_set():
                 return {"status": "failed", "reason": STOPPING_REASON}
@@ -513,7 +540,8 @@ class NewsService:
                     pacer()
                     moves[scope] = sector_move(proxy, self.market.chart(proxy, "1y", refresh=True))
                 except Exception as exc:
-                    problems.append(f"{proxy} prices: {self._explain(exc)}")
+                    reasons.append(self._reason(exc))
+                    problems.append(f"{proxy} prices: {reasons[-1]}")
             for scope in ("us", "global"):
                 proxy = sector[scope]
                 try:
@@ -522,7 +550,8 @@ class NewsService:
                     batches.append([item for item, _ in parsed])
                     rejected += dropped
                 except Exception as exc:
-                    problems.append(f"{proxy} news: {self._explain(exc)}")
+                    reasons.append(self._reason(exc))
+                    problems.append(f"{proxy} news: {reasons[-1]}")
             with self.store.connect() as db:
                 for scope, move in moves.items():
                     self._put_move(db, sector["id"], scope, move, stamp)
@@ -534,11 +563,13 @@ class NewsService:
             else:
                 succeeded += 1
         names = {sector["id"]: sector["name"] for sector in SECTORS}
-        shown = [f"{names[sector_id]} ({problems[0]})" for sector_id, problems in list(failures.items())[:3]]
         last_error = None
         if failures:
-            last_error = f"{len(failures)} of {len(SECTORS)} sectors could not be refreshed: " + "; ".join(shown)
-            last_error += f"; and {len(failures) - len(shown)} more" if len(failures) > len(shown) else ""
+            log.debug("Sector news refresh incomplete: %s", failures)
+            failed = [names[sector_id] for sector_id in failures]
+            listed = failed[:3] + ([f"{len(failed) - 3} more"] if len(failed) > 3 else [])
+            causes = list(dict.fromkeys(_sentence(reason) for reason in reasons))[:2]
+            last_error = " ".join([f"{len(failures)} of {len(SECTORS)} sectors could not be refreshed: {_join(listed)}.", *causes])
         finished = self._now()
         with self.store.connect() as db:
             if succeeded:
@@ -621,7 +652,7 @@ class NewsService:
         if not isinstance(holdings, (list, tuple)):
             raise ValueError("Holdings must be a list of {ticker, name} objects.")
         if not 1 <= len(holdings) <= MAX_HOLDINGS:
-            raise ValueError(f"Provide between 1 and {MAX_HOLDINGS} holdings.")
+            raise ValueError(f"News can be loaded for 1 to {MAX_HOLDINGS} holdings at a time.")
         requested = {}
         for entry in holdings:
             if not isinstance(entry, dict) or not isinstance(entry.get("ticker"), str):
@@ -629,7 +660,7 @@ class NewsService:
             text = entry["ticker"].strip()
             ticker = text.upper()
             if not text.isascii() or not TICKER.fullmatch(ticker):
-                raise ValueError(f"{text[:30]!r} is not a valid ticker symbol.")
+                raise ValueError(f"“{text[:30]}” is not a valid ticker symbol.")
             name = entry.get("name")
             if name is not None and not isinstance(name, str):
                 raise ValueError("A holding name must be text or null.")
@@ -660,7 +691,7 @@ class NewsService:
         if saved is not None and not refresh and timedelta(0) <= now - saved < HOLDINGS_CACHE:
             return "cached", None, saved_text, None
         if breaker.open:
-            return "failed", None, saved_text, f"not queried because {breaker.failures} provider requests in a row failed"
+            return "failed", None, saved_text, f"LENS skipped this search after {breaker.failures} failed requests in a row"
         try:
             pacer()
             news = self._search(query)
@@ -700,8 +731,8 @@ class NewsService:
             if EXCHANGE_SUFFIX.fullmatch(ticker) and sum(1 for _, via in self._linked(ticker, now) if via == "ticker") < 2:
                 match = company_match(name, ticker)
                 if match is None:
-                    reason = "the company name is too generic to search safely" if name else "no company name was supplied for a name search"
-                    notes.append(f"{ticker}: Yahoo Finance files few headlines under exchange-suffixed symbols and {reason}.")
+                    reason = "the company name is too generic to search reliably" if name else "no company name was available to search instead"
+                    notes.append(f"{ticker}: Yahoo Finance files few headlines under symbols with an exchange suffix, and {reason}.")
             if match is None:
                 with self.store.connect() as db:
                     db.execute("DELETE FROM news_links WHERE ticker = ? AND via = 'name'", (ticker,))
@@ -718,7 +749,7 @@ class NewsService:
                         self._set_links(db, ticker, "name", [item["id"] for item in accepted])
                         self._touch_query(db, name_key, stamp)
                 elif name_state == "failed":
-                    notes.append(f"{ticker}: the company-name search for “{match.query}” failed ({name_error}).")
+                    notes.append(f"{ticker}: the company-name search for “{match.query}” could not be completed. {_sentence(name_error)}")
         stories = self._linked(ticker, now)
         if errors and not stories:
             fetched = []
@@ -735,23 +766,27 @@ class NewsService:
             fetched.extend(found["fetched"])
             errors.extend(found["errors"])
             if found["errors"]:
-                saved = (f"Showing {len(stories)} headline(s) saved at {max(found['fetched'])}." if found["fetched"]
+                count = f"{len(stories)} saved headline" if len(stories) == 1 else f"{len(stories)} saved headlines"
+                saved = (f"Showing {count} from {readable_time(max(found['fetched']))}." if found["fetched"]
                          else "No saved headlines are available.")
-                warnings.append(f"{ticker}: news could not be refreshed ({found['errors'][0].rstrip('.')}). {saved}")
+                warnings.append(f"{ticker}: news could not be refreshed. {_sentence(found['errors'][0])} {saved}")
             warnings.extend(found["notes"])
             by_name = sum(1 for _, via in stories if via == "name")
             if by_name:
                 match = company_match(name, ticker)
                 direct = len(stories) - by_name
-                filed = f"{direct} headline is" if direct == 1 else f"{direct} headlines are"
-                matched = (f"1 more was matched because its title mentions “{match.label if match else name}”. Check that it concerns this listing."
+                filed = "no headlines are" if direct == 0 else f"{direct} headline is" if direct == 1 else f"{direct} headlines are"
+                more = "" if direct == 0 else " more"
+                label = match.label if match else name
+                matched = (f"1{more} was matched because its title mentions “{label}”. Check that it concerns this listing."
                            if by_name == 1 else
-                           f"{by_name} more were matched because their titles mention “{match.label if match else name}”. Check that they concern this listing.")
+                           f"{by_name}{more} were matched because their titles mention “{label}”. Check that they concern this listing.")
                 warnings.append(f"{ticker}: {filed} filed under this symbol; {matched}")
             if not stories and not found["errors"]:
                 warnings.append(f"{ticker}: no recent headlines were found.")
         if not fetched:
-            raise MarketUnavailable(f"News could not be loaded ({errors[0] if errors else 'no response'}); no headlines were substituted.")
+            reason = _sentence(errors[0]) if errors else "Yahoo Finance did not respond."
+            raise MarketUnavailable(f"News on your holdings could not be loaded. {reason}")
         unique = sorted({story["id"]: story for stories in per_ticker.values() for story, _ in stories}.values(), key=lambda story: story["id"])
         unique.sort(key=lambda story: story["published_at"], reverse=True)
         kept, alias = collapse(unique)
